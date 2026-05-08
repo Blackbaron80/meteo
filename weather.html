@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Météo · Parmain</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+
+  :root {
+    --sky: #d6e8f7;
+    --sky-deep: #8bb8d8;
+    --ink: #1a2332;
+    --ink-light: #3a4e63;
+    --cloud: #f0f5fa;
+    --sun: #f5a623;
+    --rain: #5b8db8;
+    --wind: #7ec8b4;
+    --good: #4caf7d;
+    --bad: #e07070;
+    --panel: rgba(255,255,255,0.72);
+    --border: rgba(26,35,50,0.10);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--sky);
+    color: var(--ink);
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* Animated sky background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(175deg, #c8dff2 0%, #dceefa 40%, #eef6ff 100%);
+    z-index: 0;
+  }
+
+  /* Floating cloud shapes */
+  .clouds {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 220px;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .cloud {
+    position: absolute;
+    background: rgba(255,255,255,0.55);
+    border-radius: 50px;
+    filter: blur(18px);
+    animation: drift linear infinite;
+  }
+  .cloud:nth-child(1) { width: 280px; height: 80px; top: 30px; left: -100px; animation-duration: 60s; opacity: 0.7; }
+  .cloud:nth-child(2) { width: 180px; height: 55px; top: 70px; left: 20%; animation-duration: 80s; animation-delay: -20s; opacity: 0.5; }
+  .cloud:nth-child(3) { width: 350px; height: 90px; top: 15px; left: 50%; animation-duration: 100s; animation-delay: -40s; opacity: 0.4; }
+  .cloud:nth-child(4) { width: 220px; height: 65px; top: 90px; right: 5%; animation-duration: 70s; animation-delay: -10s; opacity: 0.6; }
+
+  @keyframes drift {
+    from { transform: translateX(0); }
+    to { transform: translateX(110vw); }
+  }
+
+  /* Layout */
+  .wrapper {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 36px 20px 60px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .title-block h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.6rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    line-height: 1;
+    color: var(--ink);
+  }
+  .title-block h1 em {
+    font-style: italic;
+    color: var(--rain);
+  }
+  .title-block .subtitle {
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    color: var(--ink-light);
+    margin-top: 6px;
+    text-transform: uppercase;
+  }
+  .refresh-btn {
+    background: var(--ink);
+    color: #fff;
+    border: none;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    padding: 8px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+  }
+  .refresh-btn:hover { opacity: 0.75; }
+  .refresh-btn:disabled { opacity: 0.4; cursor: default; }
+
+  .header-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .city-input {
+    background: rgba(255,255,255,0.65);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    min-width: 180px;
+  }
+
+  .city-input:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .city-help {
+    width: 100%;
+    font-size: 0.66rem;
+    color: var(--ink-light);
+    opacity: 0.9;
+    margin-top: -2px;
+  }
+
+  /* Current conditions panel */
+  .current-panel {
+    background: var(--panel);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px 28px;
+    margin-bottom: 24px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 20px;
+    align-items: center;
+  }
+  .current-temp {
+    font-family: 'Playfair Display', serif;
+    font-size: 3.8rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--ink);
+  }
+  .current-temp sup { font-size: 1.4rem; vertical-align: super; }
+  .current-details { display: flex; flex-direction: column; gap: 6px; }
+  .current-condition {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .current-meta {
+    font-size: 0.72rem;
+    color: var(--ink-light);
+    display: flex; flex-wrap: wrap; gap: 10px;
+  }
+  .current-meta span { display: flex; align-items: center; gap: 4px; }
+  .sun-times {
+    text-align: right;
+    font-size: 0.72rem;
+    color: var(--ink-light);
+    line-height: 2;
+  }
+  .sun-times strong { color: var(--ink); font-size: 0.82rem; }
+
+  .geo-panel {
+    background: var(--panel);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px 18px;
+    margin-bottom: 24px;
+  }
+  .geo-top {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px 14px;
+    margin-bottom: 10px;
+  }
+  .geo-title {
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-light);
+  }
+  .geo-coords {
+    font-size: 0.76rem;
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .geo-map {
+    width: 100%;
+    height: 120px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  /* Day tabs */
+  .day-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .day-tab {
+    background: rgba(255,255,255,0.5);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    cursor: pointer;
+    color: var(--ink-light);
+    transition: all 0.15s;
+    letter-spacing: 0.04em;
+  }
+  .day-tab:hover { background: rgba(255,255,255,0.8); color: var(--ink); }
+  .day-tab.active {
+    background: var(--ink);
+    color: #fff;
+    border-color: var(--ink);
+  }
+
+  /* Forecast table */
+  .forecast-panel {
+    background: var(--panel);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .forecast-header {
+    display: grid;
+    grid-template-columns: 56px 1fr 60px 60px 55px 68px 92px;
+    padding: 10px 20px;
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-light);
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.4);
+  }
+  .forecast-row {
+    display: grid;
+    grid-template-columns: 56px 1fr 60px 60px 55px 68px 92px;
+    padding: 9px 20px;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.78rem;
+    transition: background 0.15s;
+  }
+  .forecast-row:last-child { border-bottom: none; }
+  .forecast-row:hover { background: rgba(255,255,255,0.5); }
+  .forecast-row.good { border-left: 3px solid var(--good); }
+  .forecast-row.moderate { border-left: 3px solid var(--sun); }
+
+  .time-col { font-weight: 500; color: var(--ink); }
+  .cloud-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .cloud-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--sky-deep), #bdd9f0);
+    min-width: 2px;
+    max-width: 120px;
+    transition: width 0.3s;
+  }
+  .cloud-pct { font-size: 0.7rem; color: var(--ink-light); width: 28px; }
+  .temp-col { font-weight: 500; }
+  .wind-col { color: var(--ink-light); }
+  .rain-col { color: var(--rain); }
+  .precip-col { color: var(--rain); }
+  .check-col {
+    text-align: center;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    min-height: 20px;
+  }
+  .good-mark {
+    color: var(--good);
+    font-size: 1rem;
+    font-weight: 700;
+  }
+  .fail-tags {
+    display: inline-flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .fail-tag {
+    font-size: 0.6rem;
+    line-height: 1;
+    padding: 3px 5px;
+    border-radius: 6px;
+    color: #9a2f2f;
+    background: rgba(220, 72, 72, 0.12);
+    border: 1px solid rgba(220, 72, 72, 0.35);
+    letter-spacing: 0.03em;
+    cursor: help;
+  }
+  .criteria-legend {
+    font-size: 0.62rem;
+    color: var(--ink-light);
+    padding: 6px 20px 8px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.28);
+    letter-spacing: 0.03em;
+  }
+
+  /* Best windows */
+  .windows-panel {
+    background: var(--panel);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .windows-title {
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-light);
+    margin-bottom: 14px;
+  }
+  .window-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(76,175,125,0.1);
+    border: 1px solid rgba(76,175,125,0.25);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-size: 0.78rem;
+  }
+  .window-item:last-child { margin-bottom: 0; }
+  .window-icon { font-size: 1.1rem; }
+  .window-time { font-weight: 500; color: var(--ink); min-width: 110px; }
+  .window-info { color: var(--ink-light); font-size: 0.72rem; }
+  .no-windows {
+    font-size: 0.8rem;
+    color: var(--ink-light);
+    font-style: italic;
+    padding: 8px 0;
+  }
+
+  /* Status / loading */
+  .status {
+    text-align: center;
+    padding: 48px 20px;
+    font-size: 0.82rem;
+    color: var(--ink-light);
+  }
+  .spinner {
+    display: inline-block;
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--ink);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-bottom: 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-msg {
+    background: rgba(224,112,112,0.1);
+    border: 1px solid rgba(224,112,112,0.3);
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-size: 0.8rem;
+    color: #c04040;
+    margin-bottom: 20px;
+  }
+
+  /* Activity selector */
+  .activity-selector {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .activity-btn {
+    background: rgba(255,255,255,0.5);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 7px 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    cursor: pointer;
+    color: var(--ink-light);
+    transition: all 0.15s;
+    letter-spacing: 0.03em;
+  }
+  .activity-btn:hover { background: rgba(255,255,255,0.8); color: var(--ink); }
+  .activity-btn.active {
+    background: var(--ink);
+    color: #fff;
+    border-color: var(--ink);
+  }
+
+  /* Footer */
+  .footer {
+    font-size: 0.65rem;
+    color: var(--ink-light);
+    opacity: 0.6;
+    text-align: center;
+    letter-spacing: 0.06em;
+    margin-top: 12px;
+  }
+
+  @media (max-width: 600px) {
+    .title-block h1 { font-size: 2rem; }
+    .current-panel { grid-template-columns: auto 1fr; }
+    .sun-times { display: none; }
+    .header-controls {
+      width: 100%;
+      justify-content: flex-start;
+    }
+    .forecast-header, .forecast-row {
+      grid-template-columns: 48px 1fr 50px 50px 42px 52px 62px;
+    }
+    .check-col { font-size: 0.72rem; }
+    .fail-tag { font-size: 0.54rem; padding: 2px 4px; }
+  }
+</style>
+</head>
+<body>
+<div class="clouds">
+  <div class="cloud"></div>
+  <div class="cloud"></div>
+  <div class="cloud"></div>
+  <div class="cloud"></div>
+</div>
+
+<div class="wrapper">
+  <div class="header">
+    <div class="title-block">
+      <h1>Météo <em id="cityTitle">Parmain</em></h1>
+      <div class="subtitle"><span id="subtitleLocation">Val-d'Oise · Île-de-France</span> · Prévisions outdoor</div>
+    </div>
+    <div class="header-controls">
+      <input class="city-input" id="cityInput" type="text" value="Parmain" placeholder="Tape une ville" list="citySuggestions" onkeydown="if(event.key==='Enter'){searchCity();}" onchange="onCityInputChange()">
+      <select class="city-input" id="climbingSiteSelect" style="display:none" onchange="selectClimbingSite(this.value)"></select>
+      <datalist id="citySuggestions"></datalist>
+      <button class="refresh-btn" id="citySearchBtn" onclick="searchCity()">Chercher</button>
+      <button class="refresh-btn" id="refreshBtn" onclick="loadWeather()">↻ Actualiser</button>
+      <div class="city-help" id="cityHelp"></div>
+    </div>
+  </div>
+
+  <div id="app">
+    <div class="status"><div class="spinner"></div><br>Chargement des données météo…</div>
+  </div>
+
+  <div class="footer">Source : Open-Meteo API · Modèle ICON-EU · Mise à jour toutes les heures</div>
+</div>
+
+<script>
+const DEFAULT_CITY = {
+  name: 'Parmain',
+  label: 'Parmain, 95620',
+  subtitle: "Val-d'Oise · Île-de-France",
+  lat: 49.1317,
+  lon: 2.0607,
+  timezone: 'Europe/Paris',
+  countryCode: 'FR'
+};
+
+const CLIMBING_SITES = {
+  saint_maximin_le_larris: {
+    name: 'Saint Maximin Le Larris',
+    label: 'Saint Maximin Le Larris',
+    subtitle: 'Site Escalade · Oise · Hauts-de-France',
+    lat: 49.216,
+    lon: 2.445,
+    timezone: 'Europe/Paris',
+    countryCode: 'FR',
+    aliases: ['saint maximin le larris', 'saint maximim le larris', 'larris', 'saint maximin', 'saint maximim']
+  },
+  st_vaast_les_melo: {
+    name: 'St Vaast Les Melo',
+    label: 'St Vaast Les Melo',
+    subtitle: 'Site Escalade · Oise · Hauts-de-France',
+    lat: 49.271,
+    lon: 2.392,
+    timezone: 'Europe/Paris',
+    countryCode: 'FR',
+    aliases: ['st vaast les melo', 'st vaast les mello', 'saint vaast les melo', 'saint vaast les mello', 'vaast']
+  },
+  les_andelys: {
+    name: 'Les Andelys',
+    label: 'Les Andelys',
+    subtitle: 'Site Escalade · Eure · Normandie',
+    lat: 49.247,
+    lon: 1.411,
+    timezone: 'Europe/Paris',
+    countryCode: 'FR',
+    aliases: ['les andelys', 'andelys']
+  }
+};
+
+const ACTIVITIES = {
+  running: {
+    label: '🏃 Course',
+    cloud: 60, rain: 30, precip: 2.0, wind: 30, tempMin: 0, tempMax: 32,
+    tips: 'Vent critique >30 km/h · Chaleur >30°C déconseillée · Pluie ≤2 mm/h'
+  },
+  cycling: {
+    label: '🚴 Vélo',
+    cloud: 60, rain: 15, precip: 0.5, wind: 25, tempMin: 5, tempMax: 35,
+    tips: 'Vent critique >25 km/h · Pluie dangereuse (freinage) · Cumul ≤0.5 mm/h'
+  },
+  climbing: {
+    label: '🧗 Escalade',
+    cloud: 40, rain: 20, wind: 40, tempMin: 5, tempMax: 35,
+    tips: 'Roche sèche requise · Pluie 24h = 0 mm · Cumul 72h < 2 mm · Quantité brute < 1.0 mm · Pluie espérée (prob×mm) < 0.10 mm · Écart Tair–Trosée > 3°C (condensation) · Humidité < 85% · Évapotranspiration > 0 · Vent > 15 km/h'
+  }
+};
+
+let currentActivity = 'running';
+
+function getThresholds() { return ACTIVITIES[currentActivity]; }
+
+const WEATHER_CODES = {
+  0: 'Ciel dégagé ☀️', 1: 'Peu nuageux 🌤', 2: 'Partiellement nuageux ⛅',
+  3: 'Couvert ☁️', 45: 'Brouillard 🌫', 48: 'Brouillard givrant 🌫',
+  51: 'Bruine légère 🌦', 53: 'Bruine modérée 🌦', 55: 'Bruine dense 🌧',
+  61: 'Pluie légère 🌧', 63: 'Pluie modérée 🌧', 65: 'Pluie forte 🌧',
+  71: 'Neige légère 🌨', 73: 'Neige modérée 🌨', 75: 'Neige forte 🌨',
+  80: 'Averses légères 🌦', 81: 'Averses modérées 🌦', 82: 'Averses fortes ⛈',
+  85: 'Averses de neige 🌨', 86: 'Averses de neige forte 🌨',
+  95: 'Orage ⛈', 96: 'Orage avec grêle ⛈', 99: 'Orage violent ⛈'
+};
+
+let weatherData = null;
+let selectedDay = 0;
+let currentCity = { ...DEFAULT_CITY };
+let cityBeforeClimbing = null;
+
+function getSelectedCity() {
+  return currentCity;
+}
+
+function normalizeText(value) {
+  return (value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findClimbingSite(query) {
+  const q = normalizeText(query);
+  if (!q) return null;
+  return Object.values(CLIMBING_SITES).find(site =>
+    site.aliases.some(alias => {
+      const a = normalizeText(alias);
+      return a === q || q.includes(a) || a.includes(q);
+    })
+  ) || null;
+}
+
+async function onCityInputChange() {
+  if (currentActivity !== 'climbing') return;
+  const cityInput = document.getElementById('cityInput');
+  if (!cityInput) return;
+  if (findClimbingSite(cityInput.value)) {
+    await searchCity();
+  }
+}
+
+function selectClimbingSite(siteKey) {
+  const site = CLIMBING_SITES[siteKey];
+  if (!site) return;
+
+  currentCity = {
+    name: site.name,
+    label: site.label,
+    subtitle: site.subtitle,
+    lat: site.lat,
+    lon: site.lon,
+    timezone: site.timezone,
+    countryCode: site.countryCode || 'FR'
+  };
+
+  const cityInput = document.getElementById('cityInput');
+  if (cityInput) cityInput.value = currentCity.name;
+  updateCityLabels();
+  loadWeather();
+}
+
+function updateCitySuggestions() {
+  const list = document.getElementById('citySuggestions');
+  const help = document.getElementById('cityHelp');
+  const cityInput = document.getElementById('cityInput');
+  const climbingSiteSelect = document.getElementById('climbingSiteSelect');
+  const citySearchBtn = document.getElementById('citySearchBtn');
+  if (!list) return;
+
+  if (currentActivity === 'climbing') {
+    const selectedKey = Object.keys(CLIMBING_SITES).find(key => {
+      const site = CLIMBING_SITES[key];
+      return normalizeText(site.name) === normalizeText(currentCity.name);
+    }) || 'saint_maximin_le_larris';
+
+    if (climbingSiteSelect) {
+      climbingSiteSelect.innerHTML = Object.entries(CLIMBING_SITES)
+        .map(([key, site]) => `<option value="${key}" ${key === selectedKey ? 'selected' : ''}>${site.name}</option>`)
+        .join('');
+      climbingSiteSelect.style.display = 'inline-block';
+    }
+    if (cityInput) cityInput.style.display = 'none';
+    if (citySearchBtn) citySearchBtn.style.display = 'none';
+
+    list.innerHTML = Object.values(CLIMBING_SITES)
+      .map(site => `<option value="${site.name}"></option>`)
+      .join('');
+    if (help) {
+      help.textContent = 'Escalade: uniquement Saint Maximin Le Larris ou St Vaast Les Melo.';
+    }
+    return;
+  }
+
+  list.innerHTML = '';
+  if (climbingSiteSelect) climbingSiteSelect.style.display = 'none';
+  if (cityInput) cityInput.style.display = 'inline-block';
+  if (citySearchBtn) citySearchBtn.style.display = 'inline-block';
+  if (help) {
+    help.textContent = 'Course/Velo: tu peux chercher n\'importe quelle ville.';
+  }
+}
+
+function updateCityLabels() {
+  const city = getSelectedCity();
+  const titleEl = document.getElementById('cityTitle');
+  const subtitleEl = document.getElementById('subtitleLocation');
+  if (titleEl) titleEl.textContent = city.name;
+  if (subtitleEl) subtitleEl.textContent = city.subtitle;
+}
+
+async function loadWeather() {
+  const btn = document.getElementById('refreshBtn');
+  const cityInput = document.getElementById('cityInput');
+  const citySearchBtn = document.getElementById('citySearchBtn');
+  const city = getSelectedCity();
+
+  btn.disabled = true;
+  if (cityInput) cityInput.disabled = true;
+  if (citySearchBtn) citySearchBtn.disabled = true;
+  btn.textContent = '…';
+
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}` +
+    `&hourly=temperature_2m,cloudcover,windspeed_10m,precipitation_probability,precipitation,dew_point_2m,relative_humidity_2m,et0_fao_evapotranspiration,weathercode` +
+    `&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset` +
+    `&current_weather=true&timezone=${encodeURIComponent(city.timezone)}&forecast_days=3&past_days=3`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    weatherData = await res.json();
+    const todayStr = new Date().toISOString().slice(0, 10);
+    selectedDay = Math.max(0, weatherData.daily.time.findIndex(t => t >= todayStr));
+    render();
+  } catch (e) {
+    document.getElementById('app').innerHTML = `
+      <div class="error-msg">⚠️ Impossible de charger les données météo.<br>
+      Vérifiez votre connexion et réessayez.<br><small>${e.message}</small></div>`;
+  }
+
+  btn.disabled = false;
+  if (cityInput) cityInput.disabled = false;
+  if (citySearchBtn) citySearchBtn.disabled = false;
+  btn.textContent = '↻ Actualiser';
+}
+
+async function searchCity() {
+  const cityInput = document.getElementById('cityInput');
+  const citySearchBtn = document.getElementById('citySearchBtn');
+  const climbingSiteSelect = document.getElementById('climbingSiteSelect');
+  if (!cityInput || !citySearchBtn) return;
+
+  if (currentActivity === 'climbing') {
+    if (climbingSiteSelect && climbingSiteSelect.value) {
+      selectClimbingSite(climbingSiteSelect.value);
+    }
+    return;
+  }
+
+  const query = cityInput.value.trim();
+  if (!query) return;
+
+  citySearchBtn.disabled = true;
+  citySearchBtn.textContent = '…';
+
+  try {
+    if (currentActivity === 'climbing') {
+      const climbingSite = findClimbingSite(query);
+      if (!climbingSite) {
+        throw new Error('Pour Escalade, choisis Saint Maximin Le Larris ou St Vaast Les Melo');
+      }
+
+      currentCity = {
+        name: climbingSite.name,
+        label: climbingSite.label,
+        subtitle: climbingSite.subtitle,
+        lat: climbingSite.lat,
+        lon: climbingSite.lon,
+        timezone: climbingSite.timezone,
+        countryCode: climbingSite.countryCode || 'FR'
+      };
+
+      cityInput.value = currentCity.name;
+      updateCityLabels();
+      await loadWeather();
+      citySearchBtn.disabled = false;
+      citySearchBtn.textContent = 'Chercher';
+      return;
+    }
+
+    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=fr&format=json`;
+    const res = await fetch(geoUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    if (!data.results || !data.results.length) {
+      throw new Error('Ville introuvable');
+    }
+
+    const result = data.results[0];
+    const region = result.admin1 || result.admin2 || result.country || '';
+
+    currentCity = {
+      name: result.name || query,
+      label: result.postcode ? `${result.name}, ${result.postcode}` : `${result.name}, ${result.country_code || result.country || ''}`,
+      subtitle: [region, result.country].filter(Boolean).join(' · '),
+      lat: result.latitude,
+      lon: result.longitude,
+      timezone: result.timezone || 'Europe/Paris',
+      countryCode: (result.country_code || 'FR').toUpperCase()
+    };
+
+    cityInput.value = currentCity.name;
+    updateCityLabels();
+    await loadWeather();
+  } catch (e) {
+    document.getElementById('app').innerHTML = `
+      <div class="error-msg">⚠️ Impossible de trouver la ville « ${query} ».<br>
+      Vérifiez l'orthographe et réessayez.<br><small>${e.message}</small></div>`;
+  }
+
+  citySearchBtn.disabled = false;
+  citySearchBtn.textContent = 'Chercher';
+}
+
+function formatTime(isoStr) {
+  return isoStr.slice(11, 16);
+}
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function formatCoord(value, positiveDir, negativeDir) {
+  const abs = Math.abs(value).toFixed(4);
+  const dir = value >= 0 ? positiveDir : negativeDir;
+  return `${abs}° ${dir}`;
+}
+
+function getCountryBounds(countryCode, lat, lon) {
+  const bounds = {
+    FR: { left: -5.5, bottom: 41.0, right: 9.8, top: 51.4 },
+    BE: { left: 2.4, bottom: 49.4, right: 6.5, top: 51.6 },
+    CH: { left: 5.9, bottom: 45.7, right: 10.6, top: 47.9 },
+    DE: { left: 5.8, bottom: 47.2, right: 15.2, top: 55.1 },
+    ES: { left: -9.8, bottom: 35.9, right: 4.6, top: 43.9 },
+    IT: { left: 6.6, bottom: 36.5, right: 18.6, top: 47.2 },
+    GB: { left: -8.8, bottom: 49.8, right: 1.9, top: 58.8 }
+  };
+
+  if (bounds[countryCode]) return bounds[countryCode];
+
+  const delta = 6;
+  return {
+    left: lon - delta,
+    bottom: lat - delta,
+    right: lon + delta,
+    top: lat + delta
+  };
+}
+
+function getMapUrl(city) {
+  const b = getCountryBounds((city.countryCode || '').toUpperCase(), city.lat, city.lon);
+  const marker = `${city.lat.toFixed(5)}%2C${city.lon.toFixed(5)}`;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${b.left}%2C${b.bottom}%2C${b.right}%2C${b.top}&layer=mapnik&marker=${marker}`;
+}
+
+function getHourlyForDay(dayIndex) {
+  const date = weatherData.daily.time[dayIndex];
+  const sunrise = new Date(weatherData.daily.sunrise[dayIndex]);
+  const sunset = new Date(weatherData.daily.sunset[dayIndex]);
+
+  return weatherData.hourly.time
+    .map((t, i) => ({
+      time: t,
+      temp: weatherData.hourly.temperature_2m[i],
+      cloud: weatherData.hourly.cloudcover[i],
+      wind: weatherData.hourly.windspeed_10m[i],
+      rain: weatherData.hourly.precipitation_probability[i],
+      precip: weatherData.hourly.precipitation[i],
+      dewPoint: weatherData.hourly.dew_point_2m[i],
+      humidity: weatherData.hourly.relative_humidity_2m[i],
+      et0: weatherData.hourly.et0_fao_evapotranspiration[i],
+      code: weatherData.hourly.weathercode[i],
+      rawIndex: i,
+    }))
+    .filter(h => {
+      const hDate = h.time.slice(0, 10);
+      if (hDate !== date) return false;
+      const hHour = new Date(h.time);
+      return hHour >= new Date(sunrise.getTime() - 30 * 60000) &&
+             hHour <= new Date(sunset.getTime() + 30 * 60000);
+    });
+}
+
+function getRollingPrecip(rawIndex, hoursBack) {
+  if (!weatherData || !weatherData.hourly || !weatherData.hourly.precipitation) return 0;
+  const arr = weatherData.hourly.precipitation;
+  let sum = 0;
+  const start = Math.max(0, rawIndex - hoursBack + 1);
+  for (let i = start; i <= rawIndex; i += 1) {
+    sum += arr[i] || 0;
+  }
+  return sum;
+}
+
+function getClimbingDrynessMetrics(h) {
+  const precip24 = getRollingPrecip(h.rawIndex, 24);
+  const precip72 = getRollingPrecip(h.rawIndex, 72);
+  const dewGap = h.temp - (h.dewPoint || h.temp);
+  const condensationRisk = dewGap < 1 && (h.humidity || 0) > 85;
+  const rawPrecip = h.precip || 0;
+  const rainProb = h.rain || 0;
+  const expectedPrecip = (rainProb / 100) * rawPrecip;
+
+  return {
+    precip24,
+    precip72,
+    dewGap,
+    condensationRisk,
+    humidity: h.humidity || 0,
+    wind: h.wind || 0,
+    et0: h.et0 || 0,
+    rainProb,
+    rawPrecip,
+    expectedPrecip
+  };
+}
+
+function isDryRockHour(h) {
+  const m = getClimbingDrynessMetrics(h);
+  return m.precip24 === 0
+    && m.precip72 < 2
+    && m.rainProb < 20
+    && m.rawPrecip < 1.0
+    && m.expectedPrecip < 0.1
+    && m.dewGap > 3
+    && !m.condensationRisk
+    && m.humidity < 85
+    && m.et0 > 0
+    && m.wind > 15;
+}
+
+function isGoodHour(h) {
+  const t = getThresholds();
+  const precipOk = t.precip == null || (h.precip || 0) <= t.precip;
+  const baseOk = h.cloud <= t.cloud && h.rain <= t.rain && h.wind <= t.wind
+    && h.temp >= t.tempMin && h.temp <= t.tempMax && precipOk;
+
+  if (currentActivity === 'climbing') {
+    return baseOk && isDryRockHour(h);
+  }
+
+  return baseOk;
+}
+
+function getBestWindows(hours) {
+  const windows = [];
+  let start = null;
+  const minWindowHours = currentActivity === 'running' ? 1 : 2;
+  hours.forEach((h, i) => {
+    const good = isGoodHour(h);
+    if (good && start === null) start = i;
+    if (!good && start !== null) {
+      if (i - start >= minWindowHours) windows.push({ start, end: i - 1, hours });
+      start = null;
+    }
+  });
+  if (start !== null && hours.length - start >= minWindowHours)
+    windows.push({ start, end: hours.length - 1, hours });
+  return windows;
+}
+
+function cloudBar(pct) {
+  const w = Math.round(pct * 1.2);
+  return `<div class="cloud-bar-wrap">
+    <div class="cloud-bar" style="width:${w}px"></div>
+    <span class="cloud-pct">${pct}%</span>
+  </div>`;
+}
+
+function render() {
+  const d = weatherData;
+  const cw = d.current_weather;
+  const nowCode = WEATHER_CODES[cw.weathercode] || '—';
+  const city = getSelectedCity();
+
+  // Find index of today in daily array (past_days may shift it)
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayIndex = d.daily.time.findIndex(t => t >= todayStr);
+  const futureDays = d.daily.time.slice(todayIndex, todayIndex + 3);
+
+  // Build tabs (only next 3 days)
+  const tabs = futureDays.map((t, i) => {
+    const absIndex = todayIndex + i;
+    const label = i === 0 ? "Aujourd'hui" : i === 1 ? 'Demain' : formatDate(t).split(' ').slice(0,2).join(' ');
+    return `<button class="day-tab ${absIndex === selectedDay ? 'active' : ''}" onclick="selectDay(${absIndex})">${label}</button>`;
+  }).join('');
+
+  // Hourly rows
+  const hours = getHourlyForDay(selectedDay);
+  const t = getThresholds();
+  const criteriaLegend = currentActivity !== 'climbing'
+    ? `<div class="criteria-legend"><strong>KO :</strong> N nuages · P% proba pluie · mm cumul pluie · V vent · T-/T+ température hors plage</div>`
+    : '';
+  const checkHeaderLabel = currentActivity === 'climbing' ? '✓' : 'OK / KO';
+  const rows = hours.map(h => {
+    const good = isGoodHour(h);
+    const moderate = !good && h.cloud <= t.cloud * 1.3 && h.rain <= t.rain * 2 && h.wind <= t.wind * 1.2;
+    const cls = good ? 'good' : moderate ? 'moderate' : '';
+    const failedCriteria = [];
+    if (!good && currentActivity !== 'climbing') {
+      if (h.cloud > t.cloud) {
+        failedCriteria.push({
+          tag: 'N',
+          title: `Nuages trop élevés: ${Math.round(h.cloud)}% (seuil ≤${t.cloud}%)`
+        });
+      }
+      if (h.rain > t.rain) {
+        failedCriteria.push({
+          tag: 'P%',
+          title: `Probabilité de pluie trop élevée: ${Math.round(h.rain)}% (seuil ≤${t.rain}%)`
+        });
+      }
+      if (t.precip != null && (h.precip || 0) > t.precip) {
+        failedCriteria.push({
+          tag: 'mm',
+          title: `Cumul pluie trop élevé: ${(h.precip || 0).toFixed(1)} mm/h (seuil ≤${t.precip} mm/h)`
+        });
+      }
+      if (h.wind > t.wind) {
+        failedCriteria.push({
+          tag: 'V',
+          title: `Vent trop fort: ${Math.round(h.wind)} km/h (seuil ≤${t.wind} km/h)`
+        });
+      }
+      if (h.temp < t.tempMin) {
+        failedCriteria.push({
+          tag: 'T-',
+          title: `Température trop basse: ${Math.round(h.temp)}°C (seuil ≥${t.tempMin}°C)`
+        });
+      }
+      if (h.temp > t.tempMax) {
+        failedCriteria.push({
+          tag: 'T+',
+          title: `Température trop élevée: ${Math.round(h.temp)}°C (seuil ≤${t.tempMax}°C)`
+        });
+      }
+    }
+    const check = good
+      ? '<span class="good-mark">✓</span>'
+      : (failedCriteria.length
+        ? `<span class="fail-tags">${failedCriteria.map(item => `<span class="fail-tag" title="${item.title}">${item.tag}</span>`).join('')}</span>`
+        : '');
+    return `<div class="forecast-row ${cls}">
+      <span class="time-col">${formatTime(h.time)}</span>
+      <span>${cloudBar(h.cloud)}</span>
+      <span class="temp-col">${Math.round(h.temp)}°C</span>
+      <span class="wind-col">${Math.round(h.wind)} km/h</span>
+      <span class="rain-col">${h.rain}%</span>
+      <span class="precip-col">${(h.precip || 0).toFixed(1)} mm</span>
+      <span class="check-col">${check}</span>
+    </div>`;
+  }).join('') || `<div class="status" style="padding:24px">Aucune donnée disponible</div>`;
+
+  // Best windows
+  const windows = getBestWindows(hours);
+  const windowsHtml = windows.length ? windows.map(w => {
+    const sh = w.hours[w.start], eh = w.hours[w.end];
+    const temps = w.hours.slice(w.start, w.end + 1).map(h => h.temp);
+    const minT = Math.round(Math.min(...temps)), maxT = Math.round(Math.max(...temps));
+    const avgCloud = Math.round(w.hours.slice(w.start, w.end + 1).reduce((a, h) => a + h.cloud, 0) / (w.end - w.start + 1));
+    return `<div class="window-item">
+      <span class="window-icon">🟢</span>
+      <span class="window-time">${formatTime(sh.time)} – ${formatTime(eh.time)}</span>
+      <span class="window-info">${avgCloud}% nuages · ${minT}–${maxT}°C · vents &lt;${Math.round(Math.max(...w.hours.slice(w.start, w.end+1).map(h=>h.wind)))} km/h</span>
+    </div>`;
+  }).join('') : `<div class="no-windows">Aucune fenêtre idéale pour cette journée.</div>`;
+
+  const climbingDrynessSummary = currentActivity === 'climbing'
+    ? (() => {
+        const dryHours = hours.filter(isDryRockHour);
+        const sampleHour = hours[Math.max(0, Math.floor(hours.length / 2) - 1)] || hours[0];
+        if (!sampleHour) return '';
+        const m = getClimbingDrynessMetrics(sampleHour);
+        const status = dryHours.length >= 2 ? 'Roche probablement seche' : 'Roche potentiellement humide';
+        const ok = '🟢', ko = '🔴';
+        const c24  = m.precip24 === 0 ? ok : ko;
+        const c72  = m.precip72 < 2 ? ok : ko;
+        const cRain = m.rainProb < 20 ? ok : ko;
+        const cRawP = m.rawPrecip < 1.0 ? ok : ko;
+        const cExpP = m.expectedPrecip < 0.1 ? ok : ko;
+        const cDew  = m.dewGap > 3 ? ok : ko;
+        const cRH   = m.humidity < 85 ? ok : ko;
+        const cET0  = m.et0 > 0 ? ok : ko;
+        const cWind = m.wind > 15 ? ok : ko;
+        return `<div class="no-windows" style="font-style:normal;padding-top:10px;line-height:1.9">
+          <strong>${status}</strong><br>
+          ${c24} Pluie dernières 24h : <strong>${m.precip24.toFixed(1)} mm</strong> <small style="opacity:.7">(cible : 0 mm — la roche est encore gorgée si supérieur)</small><br>
+          ${c72} Cumul 72h : <strong>${m.precip72.toFixed(1)} mm</strong> <small style="opacity:.7">(cible : &lt;2 mm — le calcaire retient l'eau par capillarité 2–3 jours)</small><br>
+          ${cRain} Proba pluie prévue : <strong>${Math.round(m.rainProb)}%</strong> <small style="opacity:.7">(cible : &lt;20%)</small><br>
+          ${cRawP} <abbr title="Quantité de pluie brute prévue pour cet intervalle, indépendamment de la probabilité. Même une faible probabilité (ex: 15%) associée à une quantité élevée (ex: 8 mm) reste dangereuse pour la roche.">Quantité pluie brute</abbr> : <strong>${m.rawPrecip.toFixed(1)} mm</strong> <small style="opacity:.7">(cible : &lt;1.0 mm — garde-fou absolu indépendant de la probabilité)</small><br>
+          ${cExpP} <abbr title="Précipitation espérée = (probabilité / 100) × quantité. Combine les deux dimensions : une forte probabilité avec peu de mm OU une faible probabilité avec beaucoup de mm sont correctement pondérées.">Pluie espérée (prob × mm)</abbr> : <strong>${m.expectedPrecip.toFixed(2)} mm</strong> <small style="opacity:.7">(cible : &lt;0.10 mm — risque pondéré statistique)</small><br>
+          ${cDew} <abbr title="Tair − Trosée : écart entre la température de l'air et le point de rosée. Si cet écart est faible (&lt;3°C) et l'air saturé, la vapeur d'eau se condense en surface de la roche, la rendant glissante sans aucune pluie.">Tair − Trosée</abbr> : <strong>${m.dewGap.toFixed(1)}°C</strong> <small style="opacity:.7">(cible : &gt;3°C — risque de « gras » par condensation en dessous)</small><br>
+          ${cRH} <abbr title="RH = Humidité relative (Relative Humidity). Mesure la quantité de vapeur d'eau présente dans l'air en % de la saturation maximale possible à cette température. À 100%, l'air est saturé et la roche ne peut plus sécher.">Humidité relative (RH)</abbr> : <strong>${Math.round(m.humidity)}%</strong> <small style="opacity:.7">(cible : &lt;85%)</small><br>
+          ${cET0} <abbr title="ET0 = Évapotranspiration de référence (FAO-56). Estime l'énergie disponible dans l'air pour évaporer l'eau (en mm/h). Si ET0 ≈ 0, les conditions météo ne permettent pas au calcaire de sécher : air calme, ciel couvert, humidité élevée.">Évapotranspiration ET0</abbr> : <strong>${m.et0.toFixed(2)} mm/h</strong> <small style="opacity:.7">(cible : &gt;0 — énergie disponible pour sécher la roche)</small><br>
+          ${cWind} Vent : <strong>${Math.round(m.wind)} km/h</strong> <small style="opacity:.7">(cible : &gt;15 km/h — le vent accélère le séchage des parois exposées)</small>
+        </div>`;
+      })()
+    : '';
+
+  // Sunrise/sunset
+  const srTime = formatTime(d.daily.sunrise[selectedDay]);
+  const ssTime = formatTime(d.daily.sunset[selectedDay]);
+
+  document.getElementById('app').innerHTML = `
+    <div class="current-panel">
+      <div class="current-temp">${Math.round(cw.temperature)}<sup>°</sup></div>
+      <div class="current-details">
+        <div class="current-condition">${nowCode}</div>
+        <div class="current-meta">
+          <span>💨 ${Math.round(cw.windspeed)} km/h</span>
+          <span>📍 ${city.label}</span>
+        </div>
+      </div>
+      <div class="sun-times">
+        <div>🌅 <strong>${srTime}</strong></div>
+        <div>🌇 <strong>${ssTime}</strong></div>
+      </div>
+    </div>
+
+    <div class="activity-selector">
+      ${Object.entries(ACTIVITIES).map(([key, a]) =>
+        `<button class="activity-btn ${key === currentActivity ? 'active' : ''}"
+          onclick="selectActivity('${key}')">${a.label}</button>`
+      ).join('')}
+    </div>
+
+    <div class="day-tabs">${tabs}</div>
+
+    <div class="forecast-panel">
+      <div class="forecast-header">
+        <span>Heure</span>
+        <span>Nuages</span>
+        <span>Temp.</span>
+        <span>Vent</span>
+        <span>Pluie %</span>
+        <span>Pluie mm</span>
+        <span>${checkHeaderLabel}</span>
+      </div>
+      ${criteriaLegend}
+      ${rows}
+    </div>
+
+    <div class="windows-panel">
+      <div class="windows-title">🟢 Meilleures fenêtres — ${ACTIVITIES[currentActivity].label} · nuages &lt;${t.cloud}% · pluie &lt;${t.rain}% · vent &lt;${t.wind} km/h<br><small style="opacity:0.7;font-size:0.6rem">${t.tips}</small></div>
+      ${windowsHtml}
+      ${climbingDrynessSummary}
+    </div>
+
+    <div class="geo-panel">
+      <div class="geo-top">
+        <div class="geo-title">Localisation GPS</div>
+        <div class="geo-coords">${formatCoord(city.lat, 'N', 'S')} · ${formatCoord(city.lon, 'E', 'O')}</div>
+      </div>
+      <iframe
+        class="geo-map"
+        title="Carte pays de ${city.name}"
+        src="${getMapUrl(city)}"
+        loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade">
+      </iframe>
+    </div>
+  `;
+}
+
+function selectActivity(key) {
+  const wasClimbing = currentActivity === 'climbing';
+  const isClimbing = key === 'climbing';
+
+  if (!wasClimbing && isClimbing) {
+    cityBeforeClimbing = { ...currentCity };
+  }
+
+  currentActivity = key;
+  updateCitySuggestions();
+
+  if (isClimbing) {
+    const preferredSite = CLIMBING_SITES.saint_maximin_le_larris;
+    if (findClimbingSite(currentCity.name) === null) {
+      currentCity = {
+        name: preferredSite.name,
+        label: preferredSite.label,
+        subtitle: preferredSite.subtitle,
+        lat: preferredSite.lat,
+        lon: preferredSite.lon,
+        timezone: preferredSite.timezone,
+        countryCode: preferredSite.countryCode || 'FR'
+      };
+
+      const cityInput = document.getElementById('cityInput');
+      if (cityInput) cityInput.value = currentCity.name;
+      updateCityLabels();
+      loadWeather();
+      return;
+    }
+  }
+
+  if (wasClimbing && !isClimbing && cityBeforeClimbing) {
+    currentCity = { ...cityBeforeClimbing };
+    cityBeforeClimbing = null;
+    const cityInput = document.getElementById('cityInput');
+    if (cityInput) cityInput.value = currentCity.name;
+    updateCityLabels();
+    loadWeather();
+    return;
+  }
+
+  render();
+}
+
+function selectDay(i) {
+  selectedDay = i;
+  render();
+}
+
+updateCitySuggestions();
+updateCityLabels();
+loadWeather();
+</script>
+</body>
+</html>
