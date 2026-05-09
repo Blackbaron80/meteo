@@ -871,6 +871,7 @@ const MODEL_CATALOG = {
     label: 'ICON-EU',
     nationality: 'Allemagne (DWD)',
     coverage: 'Europe (grille europeenne)',
+    geoPrecision: '7 km',
     horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
     coverageCheck: () => true
   },
@@ -879,6 +880,7 @@ const MODEL_CATALOG = {
     label: 'meteo france',
     nationality: 'France (Meteo-France)',
     coverage: 'France metropolitaine et zones proches',
+    geoPrecision: '2,5 km',
     horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
     coverageCheck: isAromeCoverage
   },
@@ -887,6 +889,7 @@ const MODEL_CATALOG = {
     label: 'ICON-D2',
     nationality: 'Allemagne (DWD)',
     coverage: 'Allemagne et Europe centrale proche',
+    geoPrecision: '2 km',
     horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
     coverageCheck: isIconD2Coverage
   },
@@ -895,6 +898,7 @@ const MODEL_CATALOG = {
     label: 'KNMI Seamless',
     nationality: 'Pays-Bas (KNMI)',
     coverage: 'Benelux et Europe du Nord-Ouest',
+    geoPrecision: '2 a 5,5 km (9 km apres 2,5 jours)',
     horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
     coverageCheck: isKnmiCoverage
   },
@@ -903,6 +907,7 @@ const MODEL_CATALOG = {
     label: 'DMI Seamless',
     nationality: 'Danemark (DMI)',
     coverage: 'Scandinavie et Europe du Nord',
+    geoPrecision: '2 km (9 km apres 2,5 jours)',
     horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
     coverageCheck: isDmiCoverage
   },
@@ -911,6 +916,7 @@ const MODEL_CATALOG = {
     label: 'RS-UKMO Seamless',
     nationality: 'Royaume-Uni (UKMO)',
     coverage: 'Royaume-Uni et Europe du Nord-Ouest',
+    geoPrecision: '2 a 10 km',
     horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
     coverageCheck: isRsukmoCoverage
   },
@@ -946,14 +952,16 @@ function updateModelHelp() {
       .map(mode => {
         const mc = MODEL_CATALOG[mode];
         const ok = mc.coverageCheck ? mc.coverageCheck(city) : true;
-        return `${mc.label}: ${ok ? 'OK' : 'hors zone'}`;
+        const precisionText = mc.geoPrecision ? ` · precision ${mc.geoPrecision}` : '';
+        return `${mc.label}: ${ok ? 'OK' : 'hors zone'}${precisionText}`;
       })
       .join(' · ');
     el.textContent = `Modele Multimodel · Affichage heure par heure par modele · ${coverageText}`;
     return;
   }
   const inCoverage = cfg.coverageCheck ? cfg.coverageCheck(city) : true;
-  el.textContent = `Modele ${cfg.label} · Nationalite: ${cfg.nationality} · Couverture: ${cfg.coverage} · Prevision: ${cfg.horizon}${inCoverage ? '' : ' · Hors couverture pour cette ville'}`;
+  const precisionText = cfg.geoPrecision ? ` · Precision geographique: ${cfg.geoPrecision}` : '';
+  el.textContent = `Modele ${cfg.label} · Nationalite: ${cfg.nationality} · Couverture: ${cfg.coverage}${precisionText} · Prevision: ${cfg.horizon}${inCoverage ? '' : ' · Hors couverture pour cette ville'}`;
 }
 
 function normalizeWeatherDataset(data) {
@@ -1316,12 +1324,12 @@ function windEmoji(speed) {
 }
 
 function tempEmoji(temp) {
-  if (temp <= 0) return '🧊';
-  if (temp <= 8) return '🥶';
-  if (temp <= 16) return '🧥';
-  if (temp <= 24) return '🙂';
-  if (temp <= 30) return '🌡️';
-  return '🔥';
+  if (temp <= 0) return '🌡️🔵';
+  if (temp <= 8) return '🌡️🟦';
+  if (temp <= 16) return '🌡️🟩';
+  if (temp <= 24) return '🌡️🟨';
+  if (temp <= 30) return '🌡️🟧';
+  return '🌡️🔴';
 }
 
 function getRange(values) {
