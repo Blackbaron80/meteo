@@ -804,6 +804,16 @@ function formatTime(isoStr) {
   return isoStr.slice(11, 16);
 }
 
+function formatWindowEndTime(isoStr, hoursToAdd = 1) {
+  const d = new Date(isoStr);
+  d.setHours(d.getHours() + hoursToAdd);
+  return d.toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
 function formatDate(dateStr) {
   const d = new Date(dateStr + 'T12:00:00');
   return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -1056,12 +1066,13 @@ function render() {
   const windows = getBestWindows(hours);
   const windowsHtml = windows.length ? windows.map(w => {
     const sh = w.hours[w.start], eh = w.hours[w.end];
+    const endTime = formatWindowEndTime(eh.time, 1);
     const temps = w.hours.slice(w.start, w.end + 1).map(h => h.temp);
     const minT = Math.round(Math.min(...temps)), maxT = Math.round(Math.max(...temps));
     const avgCloud = Math.round(w.hours.slice(w.start, w.end + 1).reduce((a, h) => a + h.cloud, 0) / (w.end - w.start + 1));
     return `<div class="window-item">
       <span class="window-icon">🟢</span>
-      <span class="window-time">${formatTime(sh.time)} – ${formatTime(eh.time)}</span>
+      <span class="window-time">${formatTime(sh.time)} - ${endTime}</span>
       <span class="window-info">${avgCloud}% nuages · ${minT}–${maxT}°C · vents &lt;${Math.round(Math.max(...w.hours.slice(w.start, w.end+1).map(h=>h.wind)))} km/h</span>
     </div>`;
   }).join('') : `<div class="no-windows">Aucune fenêtre idéale pour cette journée.</div>`;
