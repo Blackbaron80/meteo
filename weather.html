@@ -260,12 +260,14 @@
     backdrop-filter: blur(12px);
     border: 1px solid var(--border);
     border-radius: 16px;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     margin-bottom: 24px;
+    -webkit-overflow-scrolling: touch;
   }
   .forecast-header {
     display: grid;
-    grid-template-columns: 56px 1fr 60px 60px 55px 68px 92px;
+    grid-template-columns: 48px 46px 50px 58px 66px 86px;
     padding: 10px 20px;
     font-size: 0.65rem;
     letter-spacing: 0.12em;
@@ -276,7 +278,7 @@
   }
   .forecast-row {
     display: grid;
-    grid-template-columns: 56px 1fr 60px 60px 55px 68px 92px;
+    grid-template-columns: 48px 46px 50px 58px 66px 86px;
     padding: 9px 20px;
     align-items: center;
     border-bottom: 1px solid var(--border);
@@ -289,20 +291,25 @@
   .forecast-row.moderate { border-left: 3px solid var(--sun); }
 
   .time-col { font-weight: 500; color: var(--ink); }
-  .cloud-bar-wrap { display: flex; align-items: center; gap: 8px; }
-  .cloud-bar {
-    height: 6px;
-    border-radius: 3px;
-    background: linear-gradient(90deg, var(--sky-deep), #bdd9f0);
-    min-width: 2px;
-    max-width: 120px;
-    transition: width 0.3s;
-  }
-  .cloud-pct { font-size: 0.7rem; color: var(--ink-light); width: 28px; }
+  .cloud-pct { font-size: 0.78rem; color: var(--ink-light); }
   .temp-col { font-weight: 500; }
   .wind-col { color: var(--ink-light); }
   .rain-col { color: var(--rain); }
   .precip-col { color: var(--rain); }
+  .cell-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    line-height: 1.2;
+  }
+  .cell-icon { font-size: 0.9rem; line-height: 1; }
+  .cell-sub {
+    font-size: 0.6rem;
+    color: var(--ink-light);
+    line-height: 1;
+    white-space: nowrap;
+  }
   .check-col {
     text-align: center;
     font-size: 0.9rem;
@@ -454,11 +461,12 @@
       width: 100%;
       justify-content: flex-start;
     }
-    .forecast-header, .forecast-row {
-      grid-template-columns: 48px 1fr 50px 50px 42px 52px 62px;
-    }
-    .check-col { font-size: 0.72rem; }
-    .fail-tag { font-size: 0.54rem; padding: 2px 4px; }
+    .forecast-header, .forecast-row { padding: 8px 10px; font-size: 0.68rem; }
+    .forecast-row { font-size: 0.73rem; }
+    .cell-icon { font-size: 0.82rem; }
+    .cell-sub { font-size: 0.56rem; }
+    .check-col { font-size: 0.68rem; }
+    .fail-tag { font-size: 0.52rem; padding: 2px 3px; }
   }
 </style>
 </head>
@@ -941,12 +949,24 @@ function getBestWindows(hours) {
   return windows;
 }
 
+function cloudEmoji(pct) {
+  if (pct <= 10) return '☀️';
+  if (pct <= 30) return '🌤️';
+  if (pct <= 60) return '⛅';
+  if (pct <= 85) return '🌥️';
+  return '☁️';
+}
+
+function rainEmoji(prob, mm) {
+  if (prob < 10 && mm < 0.1) return '·';
+  if (prob < 30 || mm < 0.5) return '🌂';
+  if (prob < 60 || mm < 2)   return '🌦️';
+  if (prob < 80 || mm < 5)   return '🌧️';
+  return '⛈️';
+}
+
 function cloudBar(pct) {
-  const w = Math.round(pct * 1.2);
-  return `<div class="cloud-bar-wrap">
-    <div class="cloud-bar" style="width:${w}px"></div>
-    <span class="cloud-pct">${pct}%</span>
-  </div>`;
+  return `<div class="cell-stack" title="${pct}% de couverture nuageuse"><span class="cell-icon">${cloudEmoji(pct)}</span><span class="cell-sub">${pct}%</span></div>`;
 }
 
 function render() {
@@ -1026,9 +1046,8 @@ function render() {
       <span class="time-col">${formatTime(h.time)}</span>
       <span>${cloudBar(h.cloud)}</span>
       <span class="temp-col">${Math.round(h.temp)}°C</span>
-      <span class="wind-col">${Math.round(h.wind)} km/h</span>
-      <span class="rain-col">${h.rain}%</span>
-      <span class="precip-col">${(h.precip || 0).toFixed(1)} mm</span>
+      <span class="wind-col">${Math.round(h.wind)}km/h</span>
+      <div class="cell-stack rain-col" title="Prob. ${h.rain}% · ${(h.precip||0).toFixed(1)} mm/h"><span class="cell-icon">${rainEmoji(h.rain, h.precip||0)}</span><span class="cell-sub">${h.rain}% · ${(h.precip||0).toFixed(1)}mm</span></div>
       <span class="check-col">${check}</span>
     </div>`;
   }).join('') || `<div class="status" style="padding:24px">Aucune donnée disponible</div>`;
@@ -1111,11 +1130,10 @@ function render() {
     <div class="forecast-panel">
       <div class="forecast-header">
         <span>Heure</span>
-        <span>Nuages</span>
+        <span>☁</span>
         <span>Temp.</span>
         <span>Vent</span>
-        <span>Pluie %</span>
-        <span>Pluie mm</span>
+        <span>🌧️</span>
         <span>${checkHeaderLabel}</span>
       </div>
       ${criteriaLegend}
