@@ -345,11 +345,97 @@
   .criteria-legend {
     font-size: 0.62rem;
     color: var(--ink-light);
-    padding: 6px 20px 8px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(255,255,255,0.28);
+    padding: 8px 12px;
+    margin-top: 8px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.35);
     letter-spacing: 0.03em;
   }
+
+  .multi-hour-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+  }
+  .multi-hour-block {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.45);
+    padding: 10px;
+  }
+  .multi-hour-title {
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .reliability-badge {
+    font-size: 0.62rem;
+    letter-spacing: 0.03em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .reliability-high {
+    color: #1f6f66;
+    border-color: rgba(45, 150, 137, 0.45);
+    background: rgba(45, 150, 137, 0.16);
+  }
+  .reliability-medium {
+    color: #8a5f1d;
+    border-color: rgba(204, 138, 46, 0.45);
+    background: rgba(204, 138, 46, 0.16);
+  }
+  .reliability-low {
+    color: #8e3054;
+    border-color: rgba(197, 85, 123, 0.45);
+    background: rgba(197, 85, 123, 0.16);
+  }
+  .reliability-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .multi-model-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+  }
+  .multi-model-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.6);
+    padding: 8px;
+    font-size: 0.7rem;
+    line-height: 1.5;
+  }
+  .multi-model-card.unavailable {
+    opacity: 0.6;
+  }
+  .model-badge {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+  }
+  .model-icon { background: rgba(71, 122, 199, 0.16); border-color: rgba(71, 122, 199, 0.45); color: #224d8f; }
+  .model-meteofrance { background: rgba(45, 150, 137, 0.16); border-color: rgba(45, 150, 137, 0.45); color: #1f6f66; }
+  .model-icond2 { background: rgba(204, 138, 46, 0.16); border-color: rgba(204, 138, 46, 0.45); color: #8a5f1d; }
+  .model-knmi { background: rgba(197, 85, 123, 0.16); border-color: rgba(197, 85, 123, 0.45); color: #8e3054; }
+  .model-stat { white-space: nowrap; }
 
   /* Best windows */
   .windows-panel {
@@ -381,6 +467,13 @@
   .window-item:last-child { margin-bottom: 0; }
   .window-icon { font-size: 1.1rem; }
   .window-time { font-weight: 500; color: var(--ink); min-width: 110px; }
+  .window-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 170px;
+  }
   .window-info { color: var(--ink-light); font-size: 0.72rem; }
   .no-windows {
     font-size: 0.8rem;
@@ -488,9 +581,17 @@
       <input class="city-input" id="cityInput" type="text" value="Parmain" placeholder="Tape une ville" list="citySuggestions" onkeydown="if(event.key==='Enter'){searchCity();}" onchange="onCityInputChange()">
       <select class="city-input" id="climbingSiteSelect" style="display:none" onchange="selectClimbingSite(this.value)"></select>
       <datalist id="citySuggestions"></datalist>
+      <select class="city-input" id="modelModeSelect" onchange="selectForecastMode(this.value)">
+        <option value="icon">Modele: ICON-EU</option>
+        <option value="arome">Modele: meteo france</option>
+        <option value="icon_d2" selected>Modele: ICON-D2</option>
+        <option value="knmi">Modele: KNMI Seamless</option>
+        <option value="multi">Modele: Multimodel</option>
+      </select>
       <button class="refresh-btn" id="citySearchBtn" onclick="searchCity()">Chercher</button>
       <button class="refresh-btn" id="refreshBtn" onclick="loadWeather()">↻ Actualiser</button>
       <div class="city-help" id="cityHelp"></div>
+      <div class="city-help" id="modelHelp"></div>
     </div>
   </div>
 
@@ -498,7 +599,7 @@
     <div class="status"><div class="spinner"></div><br>Chargement des données météo…</div>
   </div>
 
-  <div class="footer">Source : Open-Meteo API · Modèle ICON-EU · Mise à jour toutes les heures</div>
+  <div class="footer">Source : Open-Meteo API · Modèle <span id="modelSourceLabel">ICON-D2</span> · Mise à jour toutes les heures</div>
 </div>
 
 <script>
@@ -579,9 +680,28 @@ const WEATHER_CODES = {
 };
 
 let weatherData = null;
+let multiWeatherData = null;
 let selectedDay = 0;
 let currentCity = { ...DEFAULT_CITY };
 let cityBeforeClimbing = null;
+let weatherSourceLabel = 'ICON-D2';
+
+const WEATHER_MODELS = {
+  icon: 'icon_eu',
+  arome: 'meteofrance_arome_france',
+  icon_d2: 'icon_d2',
+  knmi: 'knmi_seamless'
+};
+
+const FORECAST_MODES = {
+  icon: 'icon',
+  arome: 'arome',
+  icon_d2: 'icon_d2',
+  knmi: 'knmi',
+  multi: 'multi'
+};
+
+let selectedForecastMode = FORECAST_MODES.icon_d2;
 
 function getSelectedCity() {
   return currentCity;
@@ -684,6 +804,130 @@ function updateCityLabels() {
   const subtitleEl = document.getElementById('subtitleLocation');
   if (titleEl) titleEl.textContent = city.name;
   if (subtitleEl) subtitleEl.textContent = city.subtitle;
+  updateModelHelp();
+}
+
+function updateModelSourceLabel() {
+  const el = document.getElementById('modelSourceLabel');
+  if (el) el.textContent = weatherSourceLabel;
+}
+
+function selectForecastMode(mode) {
+  if (!Object.values(FORECAST_MODES).includes(mode)) return;
+  selectedForecastMode = mode;
+  updateModelHelp();
+  loadWeather();
+}
+
+function buildWeatherUrl(city, model) {
+  return `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}` +
+    `&hourly=temperature_2m,cloudcover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,windspeed_10m,precipitation_probability,precipitation,dew_point_2m,relative_humidity_2m,et0_fao_evapotranspiration,weathercode` +
+    `&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset` +
+    `&current_weather=true&timezone=${encodeURIComponent(city.timezone)}&forecast_days=3&past_days=3` +
+    `&models=${encodeURIComponent(model)}`;
+}
+
+function isAromeCoverage(city) {
+  const cc = (city.countryCode || '').toUpperCase();
+  if (cc !== 'FR') return false;
+  return city.lat >= 41.0 && city.lat <= 51.5 && city.lon >= -5.8 && city.lon <= 10.0;
+}
+
+function isIconD2Coverage(city) {
+  const cc = (city.countryCode || '').toUpperCase();
+  if (['DE', 'FR', 'BE', 'NL', 'LU', 'CH', 'AT', 'CZ', 'PL', 'DK'].includes(cc)) return true;
+  return city.lat >= 44.0 && city.lat <= 57.5 && city.lon >= -1.5 && city.lon <= 19.5;
+}
+
+function isKnmiCoverage(city) {
+  const cc = (city.countryCode || '').toUpperCase();
+  if (['NL', 'BE', 'LU', 'DE', 'FR', 'GB', 'DK'].includes(cc)) return true;
+  return city.lat >= 45.0 && city.lat <= 58.5 && city.lon >= -8.5 && city.lon <= 13.5;
+}
+
+const MODEL_CATALOG = {
+  [FORECAST_MODES.icon]: {
+    apiModel: WEATHER_MODELS.icon,
+    label: 'ICON-EU',
+    nationality: 'Allemagne (DWD)',
+    coverage: 'Europe (grille europeenne)',
+    horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
+    coverageCheck: () => true
+  },
+  [FORECAST_MODES.arome]: {
+    apiModel: WEATHER_MODELS.arome,
+    label: 'meteo france',
+    nationality: 'France (Meteo-France)',
+    coverage: 'France metropolitaine et zones proches',
+    horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
+    coverageCheck: isAromeCoverage
+  },
+  [FORECAST_MODES.icon_d2]: {
+    apiModel: WEATHER_MODELS.icon_d2,
+    label: 'ICON-D2',
+    nationality: 'Allemagne (DWD)',
+    coverage: 'Allemagne et Europe centrale proche',
+    horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
+    coverageCheck: isIconD2Coverage
+  },
+  [FORECAST_MODES.knmi]: {
+    apiModel: WEATHER_MODELS.knmi,
+    label: 'KNMI Seamless',
+    nationality: 'Pays-Bas (KNMI)',
+    coverage: 'Benelux et Europe du Nord-Ouest',
+    horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
+    coverageCheck: isKnmiCoverage
+  },
+  [FORECAST_MODES.multi]: {
+    apiModel: null,
+    label: 'Multimodel',
+    nationality: 'Mixte',
+    coverage: 'Selon chaque modele',
+    horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
+    coverageCheck: () => true
+  }
+};
+
+function getSelectedModelConfig() {
+  return MODEL_CATALOG[selectedForecastMode] || MODEL_CATALOG[FORECAST_MODES.icon];
+}
+
+function updateModelHelp() {
+  const el = document.getElementById('modelHelp');
+  if (!el) return;
+  const city = getSelectedCity();
+  const cfg = getSelectedModelConfig();
+  if (selectedForecastMode === FORECAST_MODES.multi) {
+    const modelModes = [FORECAST_MODES.icon, FORECAST_MODES.arome, FORECAST_MODES.icon_d2, FORECAST_MODES.knmi];
+    const coverageText = modelModes
+      .map(mode => {
+        const mc = MODEL_CATALOG[mode];
+        const ok = mc.coverageCheck ? mc.coverageCheck(city) : true;
+        return `${mc.label}: ${ok ? 'OK' : 'hors zone'}`;
+      })
+      .join(' · ');
+    el.textContent = `Modele Multimodel · Affichage heure par heure par modele · ${coverageText}`;
+    return;
+  }
+  const inCoverage = cfg.coverageCheck ? cfg.coverageCheck(city) : true;
+  el.textContent = `Modele ${cfg.label} · Nationalite: ${cfg.nationality} · Couverture: ${cfg.coverage} · Prevision: ${cfg.horizon}${inCoverage ? '' : ' · Hors couverture pour cette ville'}`;
+}
+
+function normalizeWeatherDataset(data) {
+  if (!data || !data.hourly) return data;
+
+  const timeArr = Array.isArray(data.hourly.time) ? data.hourly.time : [];
+
+  const existingTotal = Array.isArray(data.hourly.cloudcover)
+    ? data.hourly.cloudcover.slice()
+    : (Array.isArray(data.hourly.cloud_cover) ? data.hourly.cloud_cover.slice() : []);
+
+  data.hourly.cloudcover = timeArr.map((_, i) => {
+    const total = existingTotal[i];
+    return Number.isFinite(total) ? total : null;
+  });
+
+  return data;
 }
 
 async function loadWeather() {
@@ -697,19 +941,52 @@ async function loadWeather() {
   if (citySearchBtn) citySearchBtn.disabled = true;
   btn.textContent = '…';
 
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}` +
-    `&hourly=temperature_2m,cloudcover,windspeed_10m,precipitation_probability,precipitation,dew_point_2m,relative_humidity_2m,et0_fao_evapotranspiration,weathercode` +
-    `&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset` +
-    `&current_weather=true&timezone=${encodeURIComponent(city.timezone)}&forecast_days=3&past_days=3`;
+  const cfg = getSelectedModelConfig();
+  const modelUrl = cfg.apiModel ? buildWeatherUrl(city, cfg.apiModel) : null;
+  const inCoverage = cfg.coverageCheck ? cfg.coverageCheck(city) : true;
 
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    weatherData = await res.json();
+    if (selectedForecastMode === FORECAST_MODES.multi) {
+      const modelModes = [FORECAST_MODES.icon, FORECAST_MODES.arome, FORECAST_MODES.icon_d2, FORECAST_MODES.knmi];
+      const eligible = modelModes
+        .map(mode => ({ mode, cfg: MODEL_CATALOG[mode] }))
+        .filter(item => (item.cfg.coverageCheck ? item.cfg.coverageCheck(city) : true));
+
+      if (!eligible.length) throw new Error('Aucun modele disponible pour cette ville');
+
+      const responses = await Promise.all(eligible.map(async item => {
+        const url = buildWeatherUrl(city, item.cfg.apiModel);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`${item.cfg.label} HTTP ${res.status}`);
+        const json = await res.json();
+        return {
+          mode: item.mode,
+          label: item.cfg.label,
+          data: normalizeWeatherDataset(json)
+        };
+      }));
+
+      multiWeatherData = responses;
+      weatherData = responses[0].data;
+      weatherSourceLabel = `Multimodel (${responses.map(r => r.label).join(', ')})`;
+      updateModelSourceLabel();
+    } else {
+      if (!inCoverage) throw new Error(`${cfg.label} hors zone de couverture pour cette ville`);
+      const modelRes = await fetch(modelUrl);
+      if (!modelRes.ok) throw new Error(`${cfg.label} HTTP ${modelRes.status}`);
+      weatherData = normalizeWeatherDataset(await modelRes.json());
+      multiWeatherData = null;
+      weatherSourceLabel = `${cfg.label} (mode manuel)`;
+      updateModelSourceLabel();
+    }
+
     const todayStr = new Date().toISOString().slice(0, 10);
     selectedDay = Math.max(0, weatherData.daily.time.findIndex(t => t >= todayStr));
     render();
   } catch (e) {
+    multiWeatherData = null;
+    weatherSourceLabel = 'Erreur chargement';
+    updateModelSourceLabel();
     document.getElementById('app').innerHTML = `
       <div class="error-msg">⚠️ Impossible de charger les données météo.<br>
       Vérifiez votre connexion et réessayez.<br><small>${e.message}</small></div>`;
@@ -854,22 +1131,28 @@ function getMapUrl(city) {
 }
 
 function getHourlyForDay(dayIndex) {
-  const date = weatherData.daily.time[dayIndex];
-  const sunrise = new Date(weatherData.daily.sunrise[dayIndex]);
-  const sunset = new Date(weatherData.daily.sunset[dayIndex]);
+  return getHourlyForDayFromData(weatherData, dayIndex);
+}
 
-  return weatherData.hourly.time
+function getHourlyForDayFromData(dataset, dayIndex) {
+  if (!dataset || !dataset.daily || !dataset.hourly) return [];
+  const date = dataset.daily.time[dayIndex];
+  const sunrise = new Date(dataset.daily.sunrise[dayIndex]);
+  const sunset = new Date(dataset.daily.sunset[dayIndex]);
+  const asNumber = (v, fallback = 0) => (Number.isFinite(v) ? v : fallback);
+
+  return dataset.hourly.time
     .map((t, i) => ({
       time: t,
-      temp: weatherData.hourly.temperature_2m[i],
-      cloud: weatherData.hourly.cloudcover[i],
-      wind: weatherData.hourly.windspeed_10m[i],
-      rain: weatherData.hourly.precipitation_probability[i],
-      precip: weatherData.hourly.precipitation[i],
-      dewPoint: weatherData.hourly.dew_point_2m[i],
-      humidity: weatherData.hourly.relative_humidity_2m[i],
-      et0: weatherData.hourly.et0_fao_evapotranspiration[i],
-      code: weatherData.hourly.weathercode[i],
+      temp: asNumber(dataset.hourly.temperature_2m[i]),
+      cloud: asNumber(dataset.hourly.cloudcover[i]),
+      wind: asNumber(dataset.hourly.windspeed_10m[i]),
+      rain: asNumber(dataset.hourly.precipitation_probability[i]),
+      precip: asNumber(dataset.hourly.precipitation[i]),
+      dewPoint: asNumber(dataset.hourly.dew_point_2m[i], asNumber(dataset.hourly.temperature_2m[i])),
+      humidity: asNumber(dataset.hourly.relative_humidity_2m[i]),
+      et0: asNumber(dataset.hourly.et0_fao_evapotranspiration[i]),
+      code: dataset.hourly.weathercode[i],
       rawIndex: i,
     }))
     .filter(h => {
@@ -975,11 +1258,78 @@ function rainEmoji(prob, mm) {
   return '⛈️';
 }
 
+function windEmoji(speed) {
+  if (speed < 8) return '🍃';
+  if (speed < 20) return '🌬️';
+  if (speed < 35) return '💨';
+  return '🌪️';
+}
+
+function tempEmoji(temp) {
+  if (temp <= 0) return '🧊';
+  if (temp <= 8) return '🥶';
+  if (temp <= 16) return '🧥';
+  if (temp <= 24) return '🙂';
+  if (temp <= 30) return '🌡️';
+  return '🔥';
+}
+
+function getRange(values) {
+  const clean = values.filter(Number.isFinite);
+  if (!clean.length) return 0;
+  return Math.max(...clean) - Math.min(...clean);
+}
+
+function getReliabilityLevel(score) {
+  if (score >= 75) {
+    return { score, label: 'Forte', icon: '🟢', className: 'reliability-high' };
+  }
+  if (score >= 50) {
+    return { score, label: 'Moyenne', icon: '🟡', className: 'reliability-medium' };
+  }
+  return { score, label: 'Faible', icon: '🔴', className: 'reliability-low' };
+}
+
+function getReliabilityFromRange(range, scale) {
+  const disagreement = Math.min(range / scale, 1);
+  const score = Math.max(0, Math.min(100, Math.round((1 - disagreement) * 100)));
+  return getReliabilityLevel(score);
+}
+
+function getVariableReliability(hoursAtSameTime) {
+  const cloudRange = getRange(hoursAtSameTime.map(h => h.cloud));
+  const tempRange = getRange(hoursAtSameTime.map(h => h.temp));
+  const windRange = getRange(hoursAtSameTime.map(h => h.wind));
+  const rainProbRange = getRange(hoursAtSameTime.map(h => h.rain));
+  const precipRange = getRange(hoursAtSameTime.map(h => h.precip));
+
+  const precipDisagreement = Math.min(((rainProbRange / 100) + (precipRange / 5)) / 2, 1);
+  const precipScore = Math.max(0, Math.min(100, Math.round((1 - precipDisagreement) * 100)));
+
+  return {
+    cloud: getReliabilityFromRange(cloudRange, 100),
+    temp: getReliabilityFromRange(tempRange, 12),
+    wind: getReliabilityFromRange(windRange, 40),
+    precip: getReliabilityLevel(precipScore)
+  };
+}
+
+function formatPercent(value, decimals = 2) {
+  const n = Number.isFinite(value) ? value : 0;
+  return `${n.toFixed(decimals)}%`;
+}
+
 function cloudBar(pct) {
-  return `<div class="cell-stack" title="${pct}% de couverture nuageuse"><span class="cell-icon">${cloudEmoji(pct)}</span><span class="cell-sub">${pct}%</span></div>`;
+  const pctText = formatPercent(pct, 2);
+  return `<div class="cell-stack" title="${pctText} de couverture nuageuse"><span class="cell-icon">${cloudEmoji(pct)}</span><span class="cell-sub">${pctText}</span></div>`;
 }
 
 function render() {
+  if (selectedForecastMode === FORECAST_MODES.multi && Array.isArray(multiWeatherData) && multiWeatherData.length) {
+    renderMultiModel();
+    return;
+  }
+
   const d = weatherData;
   const cw = d.current_weather;
   const nowCode = WEATHER_CODES[cw.weathercode] || '—';
@@ -1005,6 +1355,9 @@ function render() {
     : '';
   const checkHeaderLabel = currentActivity === 'climbing' ? '✓' : 'OK / KO';
   const rows = hours.map(h => {
+    const hasRainProb = Number.isFinite(h.rain);
+    const rainProb = hasRainProb ? h.rain : null;
+    const precipMm = Number.isFinite(h.precip) ? h.precip : 0;
     const good = isGoodHour(h);
     const moderate = !good && h.cloud <= t.cloud * 1.3 && h.rain <= t.rain * 2 && h.wind <= t.wind * 1.2;
     const cls = good ? 'good' : moderate ? 'moderate' : '';
@@ -1057,7 +1410,7 @@ function render() {
       <span>${cloudBar(h.cloud)}</span>
       <span class="temp-col">${Math.round(h.temp)}°C</span>
       <span class="wind-col">${Math.round(h.wind)}km/h</span>
-      <div class="cell-stack rain-col" title="Prob. ${h.rain}% · ${(h.precip||0).toFixed(1)} mm/h"><span class="cell-icon">${rainEmoji(h.rain, h.precip||0)}</span><span class="cell-sub">${h.rain}% · ${(h.precip||0).toFixed(1)}mm</span></div>
+      <div class="cell-stack rain-col" title="Prob. ${hasRainProb ? formatPercent(rainProb, 2) : '--'} · ${precipMm.toFixed(1)} mm/h"><span class="cell-icon">${rainEmoji(hasRainProb ? rainProb : 100, precipMm)}</span><span class="cell-sub">${hasRainProb ? formatPercent(rainProb, 2) : '--'} · ${precipMm.toFixed(1)}mm</span></div>
       <span class="check-col">${check}</span>
     </div>`;
   }).join('') || `<div class="status" style="padding:24px">Aucune donnée disponible</div>`;
@@ -1067,12 +1420,13 @@ function render() {
   const windowsHtml = windows.length ? windows.map(w => {
     const sh = w.hours[w.start], eh = w.hours[w.end];
     const endTime = formatWindowEndTime(eh.time, 1);
-    const temps = w.hours.slice(w.start, w.end + 1).map(h => h.temp);
+    const windowHours = w.hours.slice(w.start, w.end + 1);
+    const temps = windowHours.map(h => h.temp);
     const minT = Math.round(Math.min(...temps)), maxT = Math.round(Math.max(...temps));
-    const avgCloud = Math.round(w.hours.slice(w.start, w.end + 1).reduce((a, h) => a + h.cloud, 0) / (w.end - w.start + 1));
+    const avgCloud = Math.round(windowHours.reduce((a, h) => a + h.cloud, 0) / (w.end - w.start + 1));
     return `<div class="window-item">
       <span class="window-icon">🟢</span>
-      <span class="window-time">${formatTime(sh.time)} - ${endTime}</span>
+      <span class="window-main"><span class="window-time">${formatTime(sh.time)} - ${endTime}</span></span>
       <span class="window-info">${avgCloud}% nuages · ${minT}–${maxT}°C · vents &lt;${Math.round(Math.max(...w.hours.slice(w.start, w.end+1).map(h=>h.wind)))} km/h</span>
     </div>`;
   }).join('') : `<div class="no-windows">Aucune fenêtre idéale pour cette journée.</div>`;
@@ -1147,9 +1501,9 @@ function render() {
         <span>🌧️</span>
         <span>${checkHeaderLabel}</span>
       </div>
-      ${criteriaLegend}
       ${rows}
     </div>
+    ${criteriaLegend}
 
     <div class="windows-panel">
       <div class="windows-title">🟢 Meilleures fenêtres — ${ACTIVITIES[currentActivity].label} · nuages &lt;${t.cloud}% · pluie &lt;${t.rain}% · vent &lt;${t.wind} km/h<br><small style="opacity:0.7;font-size:0.6rem">${t.tips}</small></div>
@@ -1169,6 +1523,104 @@ function render() {
         loading="lazy"
         referrerpolicy="no-referrer-when-downgrade">
       </iframe>
+    </div>
+  `;
+}
+
+function renderMultiModel() {
+  const base = multiWeatherData[0].data;
+  const city = getSelectedCity();
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayIndex = base.daily.time.findIndex(t => t >= todayStr);
+  const futureDays = base.daily.time.slice(todayIndex, todayIndex + 3);
+
+  const tabs = futureDays.map((t, i) => {
+    const absIndex = todayIndex + i;
+    const label = i === 0 ? "Aujourd'hui" : i === 1 ? 'Demain' : formatDate(t).split(' ').slice(0, 2).join(' ');
+    return `<button class="day-tab ${absIndex === selectedDay ? 'active' : ''}" onclick="selectDay(${absIndex})">${label}</button>`;
+  }).join('');
+
+  const perModelHours = multiWeatherData.map(entry => {
+    const hours = getHourlyForDayFromData(entry.data, selectedDay);
+    const byTime = new Map(hours.map(h => [h.time, h]));
+    return { mode: entry.mode, label: entry.label, byTime };
+  });
+
+  const modelVisuals = {
+    [FORECAST_MODES.icon]: { badge: 'ICON-EU', className: 'model-icon' },
+    [FORECAST_MODES.arome]: { badge: 'meteo france', className: 'model-meteofrance' },
+    [FORECAST_MODES.icon_d2]: { badge: 'ICON-D2', className: 'model-icond2' },
+    [FORECAST_MODES.knmi]: { badge: 'KNMI', className: 'model-knmi' }
+  };
+
+  const baseHours = getHourlyForDayFromData(base, selectedDay);
+  const timeSlots = baseHours.map(h => h.time);
+
+  const hourBlocks = timeSlots.map(time => {
+    const hourSamples = [];
+    const cards = perModelHours.map(model => {
+      const h = model.byTime.get(time);
+      const visual = modelVisuals[model.mode] || { badge: model.label, className: 'model-icon' };
+      if (!h) {
+        return `<div class="multi-model-card unavailable">
+          <div class="model-badge ${visual.className}">${visual.badge}</div>
+          <div class="model-stat">Donnees indisponibles</div>
+        </div>`;
+      }
+
+      hourSamples.push(h);
+
+      const hasRainProb = Number.isFinite(h.rain);
+      const precipMm = Number.isFinite(h.precip) ? h.precip : 0;
+      const rainProb = hasRainProb ? h.rain : 100;
+      return `<div class="multi-model-card">
+        <div class="model-badge ${visual.className}">${visual.badge}</div>
+        <div class="model-stat">${cloudEmoji(h.cloud)} ${formatPercent(h.cloud, 2)}</div>
+        <div class="model-stat">${tempEmoji(h.temp)} ${Math.round(h.temp)}°C</div>
+        <div class="model-stat">${windEmoji(h.wind)} ${Math.round(h.wind)} km/h</div>
+        <div class="model-stat">${rainEmoji(rainProb, precipMm)} ${hasRainProb ? formatPercent(h.rain, 2) : '--'} · ${precipMm.toFixed(1)} mm</div>
+      </div>`;
+    }).join('');
+
+    const reliability = getVariableReliability(hourSamples);
+    const reliabilityItems = [
+      { key: 'Nuages', value: reliability.cloud },
+      { key: 'Temperature', value: reliability.temp },
+      { key: 'Vent', value: reliability.wind },
+      { key: 'Precipitations', value: reliability.precip }
+    ].map(item =>
+      `<span class="reliability-badge ${item.value.className}" title="Fiabilite ${item.key}: ${item.value.score}/100">${item.value.icon} ${item.key} ${item.value.score}</span>`
+    ).join('');
+
+    return `<div class="multi-hour-block">
+      <div class="multi-hour-title">
+        <span>${formatTime(time)}</span>
+      </div>
+      <div class="reliability-row">${reliabilityItems}</div>
+      <div class="multi-model-grid">${cards}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('app').innerHTML = `
+    <div class="current-panel">
+      <div class="current-temp">${Math.round(base.current_weather.temperature)}<sup>°</sup></div>
+      <div class="current-details">
+        <div class="current-condition">Vue multimodel heure par heure</div>
+        <div class="current-meta">
+          <span>📍 ${city.label}</span>
+          <span>🧠 ${multiWeatherData.length} modeles actifs</span>
+        </div>
+      </div>
+      <div class="sun-times">
+        <div>🌅 <strong>${formatTime(base.daily.sunrise[selectedDay])}</strong></div>
+        <div>🌇 <strong>${formatTime(base.daily.sunset[selectedDay])}</strong></div>
+      </div>
+    </div>
+
+    <div class="day-tabs">${tabs}</div>
+
+    <div class="forecast-panel">
+      <div class="multi-hour-list">${hourBlocks || '<div class="status" style="padding:24px">Aucune donnée disponible</div>'}</div>
     </div>
   `;
 }
@@ -1225,6 +1677,8 @@ function selectDay(i) {
 
 updateCitySuggestions();
 updateCityLabels();
+updateModelSourceLabel();
+updateModelHelp();
 loadWeather();
 </script>
 </body>
