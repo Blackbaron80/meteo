@@ -435,6 +435,8 @@
   .model-meteofrance { background: rgba(45, 150, 137, 0.16); border-color: rgba(45, 150, 137, 0.45); color: #1f6f66; }
   .model-icond2 { background: rgba(204, 138, 46, 0.16); border-color: rgba(204, 138, 46, 0.45); color: #8a5f1d; }
   .model-knmi { background: rgba(197, 85, 123, 0.16); border-color: rgba(197, 85, 123, 0.45); color: #8e3054; }
+  .model-dmi { background: rgba(70, 117, 154, 0.16); border-color: rgba(70, 117, 154, 0.45); color: #2a536f; }
+  .model-rsukmo { background: rgba(134, 95, 172, 0.16); border-color: rgba(134, 95, 172, 0.45); color: #5f3f82; }
   .model-stat { white-space: nowrap; }
 
   /* Best windows */
@@ -586,6 +588,8 @@
         <option value="arome">Modele: meteo france</option>
         <option value="icon_d2" selected>Modele: ICON-D2</option>
         <option value="knmi">Modele: KNMI Seamless</option>
+        <option value="dmi">Modele: DMI Seamless</option>
+        <option value="rsukmo">Modele: RS-UKMO Seamless</option>
         <option value="multi">Modele: Multimodel</option>
       </select>
       <button class="refresh-btn" id="citySearchBtn" onclick="searchCity()">Chercher</button>
@@ -690,7 +694,9 @@ const WEATHER_MODELS = {
   icon: 'icon_eu',
   arome: 'meteofrance_arome_france',
   icon_d2: 'icon_d2',
-  knmi: 'knmi_seamless'
+  knmi: 'knmi_seamless',
+  dmi: 'dmi_seamless',
+  rsukmo: 'ukmo_seamless'
 };
 
 const FORECAST_MODES = {
@@ -698,6 +704,8 @@ const FORECAST_MODES = {
   arome: 'arome',
   icon_d2: 'icon_d2',
   knmi: 'knmi',
+  dmi: 'dmi',
+  rsukmo: 'rsukmo',
   multi: 'multi'
 };
 
@@ -845,6 +853,18 @@ function isKnmiCoverage(city) {
   return city.lat >= 45.0 && city.lat <= 58.5 && city.lon >= -8.5 && city.lon <= 13.5;
 }
 
+function isDmiCoverage(city) {
+  const cc = (city.countryCode || '').toUpperCase();
+  if (['DK', 'NO', 'SE', 'FI', 'DE', 'NL', 'GB', 'FR', 'BE', 'IE'].includes(cc)) return true;
+  return city.lat >= 45.0 && city.lat <= 72.0 && city.lon >= -20.0 && city.lon <= 35.0;
+}
+
+function isRsukmoCoverage(city) {
+  const cc = (city.countryCode || '').toUpperCase();
+  if (['GB', 'IE', 'FR', 'BE', 'NL', 'DE', 'DK', 'NO'].includes(cc)) return true;
+  return city.lat >= 45.0 && city.lat <= 64.0 && city.lon >= -16.0 && city.lon <= 20.0;
+}
+
 const MODEL_CATALOG = {
   [FORECAST_MODES.icon]: {
     apiModel: WEATHER_MODELS.icon,
@@ -878,6 +898,22 @@ const MODEL_CATALOG = {
     horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
     coverageCheck: isKnmiCoverage
   },
+  [FORECAST_MODES.dmi]: {
+    apiModel: WEATHER_MODELS.dmi,
+    label: 'DMI Seamless',
+    nationality: 'Danemark (DMI)',
+    coverage: 'Scandinavie et Europe du Nord',
+    horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
+    coverageCheck: isDmiCoverage
+  },
+  [FORECAST_MODES.rsukmo]: {
+    apiModel: WEATHER_MODELS.rsukmo,
+    label: 'RS-UKMO Seamless',
+    nationality: 'Royaume-Uni (UKMO)',
+    coverage: 'Royaume-Uni et Europe du Nord-Ouest',
+    horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
+    coverageCheck: isRsukmoCoverage
+  },
   [FORECAST_MODES.multi]: {
     apiModel: null,
     label: 'Multimodel',
@@ -898,7 +934,14 @@ function updateModelHelp() {
   const city = getSelectedCity();
   const cfg = getSelectedModelConfig();
   if (selectedForecastMode === FORECAST_MODES.multi) {
-    const modelModes = [FORECAST_MODES.icon, FORECAST_MODES.arome, FORECAST_MODES.icon_d2, FORECAST_MODES.knmi];
+    const modelModes = [
+      FORECAST_MODES.icon,
+      FORECAST_MODES.arome,
+      FORECAST_MODES.icon_d2,
+      FORECAST_MODES.knmi,
+      FORECAST_MODES.dmi,
+      FORECAST_MODES.rsukmo
+    ];
     const coverageText = modelModes
       .map(mode => {
         const mc = MODEL_CATALOG[mode];
@@ -947,7 +990,14 @@ async function loadWeather() {
 
   try {
     if (selectedForecastMode === FORECAST_MODES.multi) {
-      const modelModes = [FORECAST_MODES.icon, FORECAST_MODES.arome, FORECAST_MODES.icon_d2, FORECAST_MODES.knmi];
+      const modelModes = [
+        FORECAST_MODES.icon,
+        FORECAST_MODES.arome,
+        FORECAST_MODES.icon_d2,
+        FORECAST_MODES.knmi,
+        FORECAST_MODES.dmi,
+        FORECAST_MODES.rsukmo
+      ];
       const eligible = modelModes
         .map(mode => ({ mode, cfg: MODEL_CATALOG[mode] }))
         .filter(item => (item.cfg.coverageCheck ? item.cfg.coverageCheck(city) : true));
@@ -1550,7 +1600,9 @@ function renderMultiModel() {
     [FORECAST_MODES.icon]: { badge: 'ICON-EU', className: 'model-icon' },
     [FORECAST_MODES.arome]: { badge: 'meteo france', className: 'model-meteofrance' },
     [FORECAST_MODES.icon_d2]: { badge: 'ICON-D2', className: 'model-icond2' },
-    [FORECAST_MODES.knmi]: { badge: 'KNMI', className: 'model-knmi' }
+    [FORECAST_MODES.knmi]: { badge: 'KNMI', className: 'model-knmi' },
+    [FORECAST_MODES.dmi]: { badge: 'DMI', className: 'model-dmi' },
+    [FORECAST_MODES.rsukmo]: { badge: 'RS-UKMO', className: 'model-rsukmo' }
   };
 
   const baseHours = getHourlyForDayFromData(base, selectedDay);
@@ -1589,7 +1641,7 @@ function renderMultiModel() {
       { key: 'Vent', value: reliability.wind },
       { key: 'Precipitations', value: reliability.precip }
     ].map(item =>
-      `<span class="reliability-badge ${item.value.className}" title="Fiabilite ${item.key}: ${item.value.score}/100">${item.value.icon} ${item.key} ${item.value.score}</span>`
+      `<span class="reliability-badge ${item.value.className}" title="Fiabilite ${item.key}: ${item.value.score}/100">${item.value.icon} Fiabilite ${item.key}: ${item.value.score}/100</span>`
     ).join('');
 
     return `<div class="multi-hour-block">
