@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests; block-all-mixed-content">
 <title>Météo · Parmain</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
@@ -342,6 +343,20 @@
     letter-spacing: 0.03em;
     cursor: help;
   }
+  .estimate-tag {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 0.56rem;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 999px;
+    color: #224d8f;
+    background: rgba(71, 122, 199, 0.12);
+    border: 1px solid rgba(71, 122, 199, 0.35);
+    letter-spacing: 0.03em;
+    vertical-align: middle;
+    cursor: help;
+  }
   .criteria-legend {
     font-size: 0.62rem;
     color: var(--ink-light);
@@ -586,6 +601,7 @@
       <select class="city-input" id="modelModeSelect" onchange="selectForecastMode(this.value)">
         <option value="icon">Modele: ICON-EU</option>
         <option value="arome">Modele: meteo france</option>
+        <option value="meteo_concept">Modele: Meteo Concept</option>
         <option value="icon_d2" selected>Modele: ICON-D2</option>
         <option value="knmi">Modele: KNMI Seamless</option>
         <option value="dmi">Modele: DMI Seamless</option>
@@ -603,7 +619,7 @@
     <div class="status"><div class="spinner"></div><br>Chargement des données météo…</div>
   </div>
 
-  <div class="footer">Source : Open-Meteo API · Modèle <span id="modelSourceLabel">ICON-D2</span> · Mise à jour toutes les heures</div>
+  <div class="footer">Source : Open-Meteo / Meteo-Concept · Modèle <span id="modelSourceLabel">ICON-D2</span> · Mise à jour toutes les heures</div>
 </div>
 
 <script>
@@ -693,6 +709,7 @@ let weatherSourceLabel = 'ICON-D2';
 const WEATHER_MODELS = {
   icon: 'icon_eu',
   arome: 'meteofrance_arome_france',
+  meteo_concept: 'meteo_concept',
   icon_d2: 'icon_d2',
   knmi: 'knmi_seamless',
   dmi: 'dmi_seamless',
@@ -702,12 +719,15 @@ const WEATHER_MODELS = {
 const FORECAST_MODES = {
   icon: 'icon',
   arome: 'arome',
+  meteo_concept: 'meteo_concept',
   icon_d2: 'icon_d2',
   knmi: 'knmi',
   dmi: 'dmi',
   rsukmo: 'rsukmo',
   multi: 'multi'
 };
+
+const METEO_CONCEPT_API_KEY = '28d2905aefa9aa5381265c85cdf09a593c1281880420b804752587706c3ad1fd';
 
 let selectedForecastMode = FORECAST_MODES.icon_d2;
 
@@ -835,6 +855,187 @@ function buildWeatherUrl(city, model) {
     `&models=${encodeURIComponent(model)}`;
 }
 
+function buildMeteoConceptUrl(path, city, extraParams = {}) {
+  const params = new URLSearchParams({
+    token: METEO_CONCEPT_API_KEY,
+    latlng: `${city.lat},${city.lon}`,
+    ...extraParams
+  });
+  return `https://api.meteo-concept.com${path}?${params.toString()}`;
+}
+
+function toIsoLocalHour(datetimeValue) {
+  const d = new Date(datetimeValue);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`;
+}
+
+function mapMeteoConceptCodeToWmo(code) {
+  const c = Number(code);
+  if (!Number.isFinite(c)) return 3;
+  if (c === 0) return 0;
+  if (c <= 2) return 1;
+  if (c <= 4) return 2;
+  if (c <= 7) return 3;
+  if (c >= 200) return 65;
+  if (c >= 100) return 61;
+  if (c >= 80) return 95;
+  if (c >= 40) return 80;
+  if (c >= 20) return 51;
+  if (c >= 10) return 45;
+  return 3;
+}
+
+function estimateCloudCoverFromMeteoConcept(code) {
+  const c = Number(code);
+  if (!Number.isFinite(c)) return 70;
+  if (c === 0) return 5;
+  if (c <= 2) return 25;
+  if (c <= 4) return 45;
+  if (c <= 7) return 80;
+  if (c >= 10) return 95;
+  return 70;
+}
+
+function computeDewPointC(tempC, humidityPct) {
+  const t = Number(tempC);
+  const rh = Number(humidityPct);
+  if (!Number.isFinite(t) || !Number.isFinite(rh) || rh <= 0) return t;
+  const a = 17.27;
+  const b = 237.7;
+  const alpha = ((a * t) / (b + t)) + Math.log(rh / 100);
+  return (b * alpha) / (a - alpha);
+}
+
+async function fetchMeteoConceptDataset(city) {
+  const hourlyUrl = buildMeteoConceptUrl('/api/forecast/nextHours', city, { hourly: 'true' });
+  const dailyUrl = buildMeteoConceptUrl('/api/forecast/daily', city);
+  const sunUrl = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}` +
+    `&daily=sunrise,sunset&timezone=${encodeURIComponent(city.timezone)}&forecast_days=14`;
+
+  const [hourlyRes, dailyRes, sunRes] = await Promise.all([
+    fetch(hourlyUrl),
+    fetch(dailyUrl),
+    fetch(sunUrl)
+  ]);
+
+  if (!hourlyRes.ok) throw new Error(`Meteo Concept nextHours HTTP ${hourlyRes.status}`);
+  if (!dailyRes.ok) throw new Error(`Meteo Concept daily HTTP ${dailyRes.status}`);
+  if (!sunRes.ok) throw new Error(`Open-Meteo sunrise/sunset HTTP ${sunRes.status}`);
+
+  const hourlyJson = await hourlyRes.json();
+  const dailyJson = await dailyRes.json();
+  const sunJson = await sunRes.json();
+
+  const hourlyForecast = Array.isArray(hourlyJson.forecast) ? hourlyJson.forecast : [];
+  const dailyForecast = Array.isArray(dailyJson.forecast) ? dailyJson.forecast : [];
+
+  const daily = {
+    time: dailyForecast.map(d => toIsoLocalHour(d.datetime).slice(0, 10)),
+    weathercode: dailyForecast.map(d => mapMeteoConceptCodeToWmo(d.weather)),
+    temperature_2m_max: dailyForecast.map(d => Number.isFinite(d.tmax) ? d.tmax : null),
+    temperature_2m_min: dailyForecast.map(d => Number.isFinite(d.tmin) ? d.tmin : null),
+    sunrise: Array.isArray(sunJson?.daily?.sunrise) ? sunJson.daily.sunrise.slice(0, dailyForecast.length) : [],
+    sunset: Array.isArray(sunJson?.daily?.sunset) ? sunJson.daily.sunset.slice(0, dailyForecast.length) : []
+  };
+
+  const hourlyRecords = hourlyForecast.map(h => {
+    const temp = Number.isFinite(h.temp2m) ? h.temp2m : null;
+    const humidity = Number.isFinite(h.rh2m) ? h.rh2m : null;
+    return {
+      time: toIsoLocalHour(h.datetime),
+      temperature_2m: temp,
+      cloudcover: estimateCloudCoverFromMeteoConcept(h.weather),
+      windspeed_10m: Number.isFinite(h.wind10m) ? h.wind10m : null,
+      precipitation_probability: Number.isFinite(h.probarain) ? h.probarain : null,
+      precipitation: Number.isFinite(h.rr1) ? h.rr1 : (Number.isFinite(h.rr10) ? h.rr10 : null),
+      relative_humidity_2m: humidity,
+      dew_point_2m: computeDewPointC(temp, humidity),
+      et0_fao_evapotranspiration: 0,
+      weathercode: mapMeteoConceptCodeToWmo(h.weather),
+      estimated: false
+    };
+  });
+
+  const presentDays = new Set(hourlyRecords.map(h => h.time.slice(0, 10)));
+  const fallbackSlots = [8, 11, 14, 17];
+  dailyForecast.slice(0, 4).forEach((d, idx) => {
+    const day = daily.time[idx];
+    if (!day || presentDays.has(day)) return;
+
+    const tMin = Number.isFinite(d.tmin) ? d.tmin : 0;
+    const tMax = Number.isFinite(d.tmax) ? d.tmax : tMin;
+    const tempSpread = Math.max(0, tMax - tMin);
+    const factors = [0.35, 0.6, 0.9, 0.7];
+    const defaultHumidity = 78;
+    const precipBySlot = Number.isFinite(d.rr10) ? d.rr10 / fallbackSlots.length : 0;
+    const et0BySlot = Number.isFinite(d.etp) ? d.etp / fallbackSlots.length : 0;
+
+    fallbackSlots.forEach((hour, slotIndex) => {
+      const hh = String(hour).padStart(2, '0');
+      const time = `${day}T${hh}:00`;
+      const temp = Number((tMin + tempSpread * factors[slotIndex]).toFixed(1));
+      const humidity = defaultHumidity;
+      hourlyRecords.push({
+        time,
+        temperature_2m: temp,
+        cloudcover: estimateCloudCoverFromMeteoConcept(d.weather),
+        windspeed_10m: Number.isFinite(d.wind10m) ? d.wind10m : 0,
+        precipitation_probability: Number.isFinite(d.probarain) ? d.probarain : 0,
+        precipitation: Number(precipBySlot.toFixed(2)),
+        relative_humidity_2m: humidity,
+        dew_point_2m: computeDewPointC(temp, humidity),
+        et0_fao_evapotranspiration: Number(et0BySlot.toFixed(2)),
+        weathercode: mapMeteoConceptCodeToWmo(d.weather),
+        estimated: true
+      });
+    });
+  });
+
+  hourlyRecords.sort((a, b) => a.time.localeCompare(b.time));
+
+  const hourly = {
+    time: hourlyRecords.map(h => h.time),
+    temperature_2m: hourlyRecords.map(h => h.temperature_2m),
+    cloudcover: hourlyRecords.map(h => h.cloudcover),
+    windspeed_10m: hourlyRecords.map(h => h.windspeed_10m),
+    precipitation_probability: hourlyRecords.map(h => h.precipitation_probability),
+    precipitation: hourlyRecords.map(h => h.precipitation),
+    relative_humidity_2m: hourlyRecords.map(h => h.relative_humidity_2m),
+    dew_point_2m: hourlyRecords.map(h => h.dew_point_2m),
+    et0_fao_evapotranspiration: hourlyRecords.map(h => h.et0_fao_evapotranspiration),
+    weathercode: hourlyRecords.map(h => h.weathercode),
+    estimated: hourlyRecords.map(h => Boolean(h.estimated))
+  };
+
+  const now = new Date();
+  const nearestHourly = hourlyRecords
+    .map(h => ({
+      src: h,
+      diff: Math.abs(new Date(h.time).getTime() - now.getTime())
+    }))
+    .sort((a, b) => a.diff - b.diff)[0]?.src;
+
+  const current_weather = nearestHourly ? {
+    temperature: Number.isFinite(nearestHourly.temperature_2m) ? nearestHourly.temperature_2m : 0,
+    windspeed: Number.isFinite(nearestHourly.windspeed_10m) ? nearestHourly.windspeed_10m : 0,
+    weathercode: Number.isFinite(nearestHourly.weathercode) ? nearestHourly.weathercode : 3
+  } : {
+    temperature: 0,
+    windspeed: 0,
+    weathercode: 3
+  };
+
+  return {
+    latitude: city.lat,
+    longitude: city.lon,
+    timezone: city.timezone,
+    hourly,
+    daily,
+    current_weather
+  };
+}
+
 function isAromeCoverage(city) {
   const cc = (city.countryCode || '').toUpperCase();
   if (cc !== 'FR') return false;
@@ -867,6 +1068,7 @@ function isRsukmoCoverage(city) {
 
 const MODEL_CATALOG = {
   [FORECAST_MODES.icon]: {
+    provider: 'openMeteo',
     apiModel: WEATHER_MODELS.icon,
     label: 'ICON-EU',
     nationality: 'Allemagne (DWD)',
@@ -876,6 +1078,7 @@ const MODEL_CATALOG = {
     coverageCheck: () => true
   },
   [FORECAST_MODES.arome]: {
+    provider: 'openMeteo',
     apiModel: WEATHER_MODELS.arome,
     label: 'meteo france',
     nationality: 'France (Meteo-France)',
@@ -884,7 +1087,18 @@ const MODEL_CATALOG = {
     horizon: 'Jusqu\'a 10 jours (via Open-Meteo)',
     coverageCheck: isAromeCoverage
   },
+  [FORECAST_MODES.meteo_concept]: {
+    provider: 'meteoConcept',
+    apiModel: WEATHER_MODELS.meteo_concept,
+    label: 'Meteo Concept',
+    nationality: 'France (Meteo-Concept)',
+    coverage: 'France et international selon API',
+    geoPrecision: 'Point de ville (lat/lon)',
+    horizon: 'Horaire court terme + journalier (API Meteo-Concept)',
+    coverageCheck: () => true
+  },
   [FORECAST_MODES.icon_d2]: {
+    provider: 'openMeteo',
     apiModel: WEATHER_MODELS.icon_d2,
     label: 'ICON-D2',
     nationality: 'Allemagne (DWD)',
@@ -894,6 +1108,7 @@ const MODEL_CATALOG = {
     coverageCheck: isIconD2Coverage
   },
   [FORECAST_MODES.knmi]: {
+    provider: 'openMeteo',
     apiModel: WEATHER_MODELS.knmi,
     label: 'KNMI Seamless',
     nationality: 'Pays-Bas (KNMI)',
@@ -903,6 +1118,7 @@ const MODEL_CATALOG = {
     coverageCheck: isKnmiCoverage
   },
   [FORECAST_MODES.dmi]: {
+    provider: 'openMeteo',
     apiModel: WEATHER_MODELS.dmi,
     label: 'DMI Seamless',
     nationality: 'Danemark (DMI)',
@@ -912,6 +1128,7 @@ const MODEL_CATALOG = {
     coverageCheck: isDmiCoverage
   },
   [FORECAST_MODES.rsukmo]: {
+    provider: 'openMeteo',
     apiModel: WEATHER_MODELS.rsukmo,
     label: 'RS-UKMO Seamless',
     nationality: 'Royaume-Uni (UKMO)',
@@ -921,6 +1138,7 @@ const MODEL_CATALOG = {
     coverageCheck: isRsukmoCoverage
   },
   [FORECAST_MODES.multi]: {
+    provider: 'openMeteo',
     apiModel: null,
     label: 'Multimodel',
     nationality: 'Mixte',
@@ -1029,10 +1247,14 @@ async function loadWeather() {
       weatherSourceLabel = `Multimodel (${responses.map(r => r.label).join(', ')})`;
       updateModelSourceLabel();
     } else {
-      if (!inCoverage) throw new Error(`${cfg.label} hors zone de couverture pour cette ville`);
-      const modelRes = await fetch(modelUrl);
-      if (!modelRes.ok) throw new Error(`${cfg.label} HTTP ${modelRes.status}`);
-      weatherData = normalizeWeatherDataset(await modelRes.json());
+        if (!inCoverage) throw new Error(`${cfg.label} hors zone de couverture pour cette ville`);
+        if (cfg.provider === 'meteoConcept') {
+          weatherData = normalizeWeatherDataset(await fetchMeteoConceptDataset(city));
+        } else {
+          const modelRes = await fetch(modelUrl);
+          if (!modelRes.ok) throw new Error(`${cfg.label} HTTP ${modelRes.status}`);
+          weatherData = normalizeWeatherDataset(await modelRes.json());
+        }
       multiWeatherData = null;
       weatherSourceLabel = `${cfg.label} (mode manuel)`;
       updateModelSourceLabel();
@@ -1211,6 +1433,7 @@ function getHourlyForDayFromData(dataset, dayIndex) {
       humidity: asNumber(dataset.hourly.relative_humidity_2m[i]),
       et0: asNumber(dataset.hourly.et0_fao_evapotranspiration[i]),
       code: dataset.hourly.weathercode[i],
+      estimated: Array.isArray(dataset.hourly.estimated) ? Boolean(dataset.hourly.estimated[i]) : false,
       rawIndex: i,
     }))
     .filter(h => {
@@ -1463,8 +1686,9 @@ function render() {
       : (failedCriteria.length
         ? `<span class="fail-tags">${failedCriteria.map(item => `<span class="fail-tag" title="${item.title}">${item.tag}</span>`).join('')}</span>`
         : '');
+    const estimatedBadge = h.estimated ? '<span class="estimate-tag" title="Valeur estimee a partir de la prevision journaliere">estime</span>' : '';
     return `<div class="forecast-row ${cls}">
-      <span class="time-col">${formatTime(h.time)}</span>
+      <span class="time-col">${formatTime(h.time)}${estimatedBadge}</span>
       <span>${cloudBar(h.cloud)}</span>
       <span class="temp-col">${Math.round(h.temp)}°C</span>
       <span class="wind-col">${Math.round(h.wind)}km/h</span>
