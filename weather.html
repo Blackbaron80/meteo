@@ -357,6 +357,20 @@
     vertical-align: middle;
     cursor: help;
   }
+  .fallback-tag {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 0.56rem;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 999px;
+    color: #8a5f1d;
+    background: rgba(204, 138, 46, 0.16);
+    border: 1px solid rgba(204, 138, 46, 0.45);
+    letter-spacing: 0.03em;
+    vertical-align: middle;
+    cursor: help;
+  }
   .criteria-legend {
     font-size: 0.62rem;
     color: var(--ink-light);
@@ -1420,18 +1434,20 @@ function getHourlyForDayFromData(dataset, dayIndex) {
   const sunrise = new Date(dataset.daily.sunrise[dayIndex]);
   const sunset = new Date(dataset.daily.sunset[dayIndex]);
   const asNumber = (v, fallback = 0) => (Number.isFinite(v) ? v : fallback);
+  const asOptionalNumber = v => (Number.isFinite(v) ? v : null);
 
   return dataset.hourly.time
     .map((t, i) => ({
       time: t,
-      temp: asNumber(dataset.hourly.temperature_2m[i]),
-      cloud: asNumber(dataset.hourly.cloudcover[i]),
-      wind: asNumber(dataset.hourly.windspeed_10m[i]),
-      rain: asNumber(dataset.hourly.precipitation_probability[i]),
-      precip: asNumber(dataset.hourly.precipitation[i]),
-      dewPoint: asNumber(dataset.hourly.dew_point_2m[i], asNumber(dataset.hourly.temperature_2m[i])),
-      humidity: asNumber(dataset.hourly.relative_humidity_2m[i]),
-      et0: asNumber(dataset.hourly.et0_fao_evapotranspiration[i]),
+      temp: asOptionalNumber(dataset.hourly.temperature_2m[i]),
+      cloud: asOptionalNumber(dataset.hourly.cloudcover[i]),
+      wind: asOptionalNumber(dataset.hourly.windspeed_10m[i]),
+      // Some models (e.g. ICON-D2) do not provide precipitation probability.
+      rain: asOptionalNumber(dataset.hourly.precipitation_probability[i]),
+      precip: asOptionalNumber(dataset.hourly.precipitation[i]),
+      dewPoint: asOptionalNumber(dataset.hourly.dew_point_2m[i]),
+      humidity: asOptionalNumber(dataset.hourly.relative_humidity_2m[i]),
+      et0: asOptionalNumber(dataset.hourly.et0_fao_evapotranspiration[i]),
       code: dataset.hourly.weathercode[i],
       estimated: Array.isArray(dataset.hourly.estimated) ? Boolean(dataset.hourly.estimated[i]) : false,
       rawIndex: i,
@@ -1493,10 +1509,29 @@ function isDryRockHour(h) {
     && m.wind > 15;
 }
 
+function getRainDecision(h) {
+  if (Number.isFinite(h.rain)) {
+    return { value: h.rain, fallback: false };
+  }
+  if (Number.isFinite(h.precip)) {
+    return { value: h.precip > 0 ? 100 : 0, fallback: true };
+  }
+  return { value: null, fallback: false };
+}
+
 function isGoodHour(h) {
   const t = getThresholds();
-  const precipOk = t.precip == null || (h.precip || 0) <= t.precip;
-  const baseOk = h.cloud <= t.cloud && h.rain <= t.rain && h.wind <= t.wind
+  const rainDecision = getRainDecision(h);
+  const rainForDecision = rainDecision.value;
+  const hasCore = Number.isFinite(h.cloud)
+    && Number.isFinite(h.wind)
+    && Number.isFinite(h.temp)
+    && Number.isFinite(rainForDecision)
+    && Number.isFinite(h.precip);
+  if (!hasCore) return false;
+
+  const precipOk = t.precip == null || h.precip <= t.precip;
+  const baseOk = h.cloud <= t.cloud && rainForDecision <= t.rain && h.wind <= t.wind
     && h.temp >= t.tempMin && h.temp <= t.tempMax && precipOk;
 
   if (currentActivity === 'climbing') {
@@ -1596,11 +1631,14 @@ function getVariableReliability(hoursAtSameTime) {
 }
 
 function formatPercent(value, decimals = 2) {
-  const n = Number.isFinite(value) ? value : 0;
-  return `${n.toFixed(decimals)}%`;
+  if (!Number.isFinite(value)) return '--';
+  return `${value.toFixed(decimals)}%`;
 }
 
 function cloudBar(pct) {
+  if (!Number.isFinite(pct)) {
+    return `<div class="cell-stack" title="Couverture nuageuse indisponible"><span class="cell-icon">—</span><span class="cell-sub">--</span></div>`;
+  }
   const pctText = formatPercent(pct, 2);
   return `<div class="cell-stack" title="${pctText} de couverture nuageuse"><span class="cell-icon">${cloudEmoji(pct)}</span><span class="cell-sub">${pctText}</span></div>`;
 }
@@ -1636,45 +1674,56 @@ function render() {
     : '';
   const checkHeaderLabel = currentActivity === 'climbing' ? '✓' : 'OK / KO';
   const rows = hours.map(h => {
+    const rainDecision = getRainDecision(h);
+    const rainForDecision = rainDecision.value;
+    const usesRainFallback = rainDecision.fallback;
     const hasRainProb = Number.isFinite(h.rain);
     const rainProb = hasRainProb ? h.rain : null;
-    const precipMm = Number.isFinite(h.precip) ? h.precip : 0;
+    const hasPrecipMm = Number.isFinite(h.precip);
+    const precipMm = hasPrecipMm ? h.precip : null;
+    const hasCoreData = Number.isFinite(h.cloud) && Number.isFinite(h.temp) && Number.isFinite(h.wind) && hasPrecipMm;
     const good = isGoodHour(h);
-    const moderate = !good && h.cloud <= t.cloud * 1.3 && h.rain <= t.rain * 2 && h.wind <= t.wind * 1.2;
+    const moderate = !good && hasCoreData && Number.isFinite(rainForDecision) && h.cloud <= t.cloud * 1.3 && rainForDecision <= t.rain * 2 && h.wind <= t.wind * 1.2;
     const cls = good ? 'good' : moderate ? 'moderate' : '';
     const failedCriteria = [];
+    if (!hasCoreData) {
+      failedCriteria.push({
+        tag: 'NA',
+        title: 'Une ou plusieurs donnees sont indisponibles pour cet horaire/model.'
+      });
+    }
     if (!good && currentActivity !== 'climbing') {
-      if (h.cloud > t.cloud) {
+      if (Number.isFinite(h.cloud) && h.cloud > t.cloud) {
         failedCriteria.push({
           tag: 'N',
           title: `Nuages trop élevés: ${Math.round(h.cloud)}% (seuil ≤${t.cloud}%)`
         });
       }
-      if (h.rain > t.rain) {
+      if (Number.isFinite(h.rain) && h.rain > t.rain) {
         failedCriteria.push({
           tag: 'P%',
           title: `Probabilité de pluie trop élevée: ${Math.round(h.rain)}% (seuil ≤${t.rain}%)`
         });
       }
-      if (t.precip != null && (h.precip || 0) > t.precip) {
+      if (t.precip != null && Number.isFinite(h.precip) && h.precip > t.precip) {
         failedCriteria.push({
           tag: 'mm',
-          title: `Cumul pluie trop élevé: ${(h.precip || 0).toFixed(1)} mm/h (seuil ≤${t.precip} mm/h)`
+          title: `Cumul pluie trop élevé: ${h.precip.toFixed(1)} mm/h (seuil ≤${t.precip} mm/h)`
         });
       }
-      if (h.wind > t.wind) {
+      if (Number.isFinite(h.wind) && h.wind > t.wind) {
         failedCriteria.push({
           tag: 'V',
           title: `Vent trop fort: ${Math.round(h.wind)} km/h (seuil ≤${t.wind} km/h)`
         });
       }
-      if (h.temp < t.tempMin) {
+      if (Number.isFinite(h.temp) && h.temp < t.tempMin) {
         failedCriteria.push({
           tag: 'T-',
           title: `Température trop basse: ${Math.round(h.temp)}°C (seuil ≥${t.tempMin}°C)`
         });
       }
-      if (h.temp > t.tempMax) {
+      if (Number.isFinite(h.temp) && h.temp > t.tempMax) {
         failedCriteria.push({
           tag: 'T+',
           title: `Température trop élevée: ${Math.round(h.temp)}°C (seuil ≤${t.tempMax}°C)`
@@ -1687,12 +1736,17 @@ function render() {
         ? `<span class="fail-tags">${failedCriteria.map(item => `<span class="fail-tag" title="${item.title}">${item.tag}</span>`).join('')}</span>`
         : '');
     const estimatedBadge = h.estimated ? '<span class="estimate-tag" title="Valeur estimee a partir de la prevision journaliere">estime</span>' : '';
+    const fallbackBadge = usesRainFallback ? '<span class="fallback-tag" title="Probabilite pluie indisponible: decision derivee du cumul de precipitation (mm)">P~</span>' : '';
+    const tempText = Number.isFinite(h.temp) ? `${Math.round(h.temp)}°C` : '--';
+    const windText = Number.isFinite(h.wind) ? `${Math.round(h.wind)}km/h` : '--';
+    const rainTitle = `Prob. ${hasRainProb ? formatPercent(rainProb, 2) : '--'} · ${hasPrecipMm ? precipMm.toFixed(1) : '--'} mm/h`;
+    const rainSub = `${hasRainProb ? formatPercent(rainProb, 2) : '--'} · ${hasPrecipMm ? precipMm.toFixed(1) : '--'}mm`;
     return `<div class="forecast-row ${cls}">
       <span class="time-col">${formatTime(h.time)}${estimatedBadge}</span>
       <span>${cloudBar(h.cloud)}</span>
-      <span class="temp-col">${Math.round(h.temp)}°C</span>
-      <span class="wind-col">${Math.round(h.wind)}km/h</span>
-      <div class="cell-stack rain-col" title="Prob. ${hasRainProb ? formatPercent(rainProb, 2) : '--'} · ${precipMm.toFixed(1)} mm/h"><span class="cell-icon">${rainEmoji(hasRainProb ? rainProb : 100, precipMm)}</span><span class="cell-sub">${hasRainProb ? formatPercent(rainProb, 2) : '--'} · ${precipMm.toFixed(1)}mm</span></div>
+      <span class="temp-col">${tempText}</span>
+      <span class="wind-col">${windText}</span>
+      <div class="cell-stack rain-col" title="${rainTitle}"><span class="cell-icon">${rainEmoji(Number.isFinite(rainForDecision) ? rainForDecision : 100, hasPrecipMm ? precipMm : 0)}</span><span class="cell-sub">${rainSub}${fallbackBadge}</span></div>
       <span class="check-col">${check}</span>
     </div>`;
   }).join('') || `<div class="status" style="padding:24px">Aucune donnée disponible</div>`;
@@ -1855,14 +1909,21 @@ function renderMultiModel() {
       hourSamples.push(h);
 
       const hasRainProb = Number.isFinite(h.rain);
-      const precipMm = Number.isFinite(h.precip) ? h.precip : 0;
+      const rainDecision = getRainDecision(h);
+      const hasPrecipMm = Number.isFinite(h.precip);
+      const precipMm = hasPrecipMm ? h.precip : null;
       const rainProb = hasRainProb ? h.rain : 100;
+      const rainForDecision = Number.isFinite(rainDecision.value) ? rainDecision.value : rainProb;
+      const fallbackBadge = rainDecision.fallback ? ' <span class="fallback-tag" title="Probabilite pluie indisponible: decision derivee du cumul de precipitation (mm)">P~</span>' : '';
+      const hasCloud = Number.isFinite(h.cloud);
+      const hasTemp = Number.isFinite(h.temp);
+      const hasWind = Number.isFinite(h.wind);
       return `<div class="multi-model-card">
         <div class="model-badge ${visual.className}">${visual.badge}</div>
-        <div class="model-stat">${cloudEmoji(h.cloud)} ${formatPercent(h.cloud, 2)}</div>
-        <div class="model-stat">${tempEmoji(h.temp)} ${Math.round(h.temp)}°C</div>
-        <div class="model-stat">${windEmoji(h.wind)} ${Math.round(h.wind)} km/h</div>
-        <div class="model-stat">${rainEmoji(rainProb, precipMm)} ${hasRainProb ? formatPercent(h.rain, 2) : '--'} · ${precipMm.toFixed(1)} mm</div>
+        <div class="model-stat">${hasCloud ? cloudEmoji(h.cloud) : '—'} ${hasCloud ? formatPercent(h.cloud, 2) : '--'}</div>
+        <div class="model-stat">${hasTemp ? tempEmoji(h.temp) : '—'} ${hasTemp ? `${Math.round(h.temp)}°C` : '--'}</div>
+        <div class="model-stat">${hasWind ? windEmoji(h.wind) : '—'} ${hasWind ? `${Math.round(h.wind)} km/h` : '--'}</div>
+        <div class="model-stat">${rainEmoji(rainForDecision, hasPrecipMm ? precipMm : 0)} ${hasRainProb ? formatPercent(h.rain, 2) : '--'} · ${hasPrecipMm ? precipMm.toFixed(1) : '--'} mm${fallbackBadge}</div>
       </div>`;
     }).join('');
 
