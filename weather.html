@@ -268,7 +268,7 @@
   }
   .forecast-header {
     display: grid;
-    grid-template-columns: 48px 46px 50px 58px 66px 86px;
+    grid-template-columns: 52px 52px 56px 72px 132px 112px;
     padding: 10px 20px;
     font-size: 0.65rem;
     letter-spacing: 0.12em;
@@ -279,7 +279,7 @@
   }
   .forecast-row {
     display: grid;
-    grid-template-columns: 48px 46px 50px 58px 66px 86px;
+    grid-template-columns: 52px 52px 56px 72px 132px 112px;
     padding: 9px 20px;
     align-items: center;
     border-bottom: 1px solid var(--border);
@@ -295,7 +295,7 @@
   .cloud-pct { font-size: 0.78rem; color: var(--ink-light); }
   .temp-col { font-weight: 500; }
   .wind-col { color: var(--ink-light); }
-  .rain-col { color: var(--rain); }
+  .rain-col { color: var(--rain); overflow: hidden; }
   .precip-col { color: var(--rain); }
   .cell-stack {
     display: flex;
@@ -303,6 +303,7 @@
     align-items: flex-start;
     gap: 1px;
     line-height: 1.2;
+    min-width: 0;
   }
   .cell-icon { font-size: 0.9rem; line-height: 1; }
   .cell-sub {
@@ -312,14 +313,16 @@
     white-space: nowrap;
   }
   .check-col {
-    text-align: center;
+    text-align: left;
     font-size: 0.9rem;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 4px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     min-height: 20px;
+    min-width: 0;
+    overflow: hidden;
   }
   .good-mark {
     color: var(--good);
@@ -328,12 +331,15 @@
   }
   .fail-tags {
     display: inline-flex;
-    gap: 4px;
-    flex-wrap: wrap;
-    justify-content: center;
+    gap: 5px;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
   }
   .fail-tag {
-    font-size: 0.6rem;
+    font-size: 0.58rem;
     line-height: 1;
     padding: 3px 5px;
     border-radius: 6px;
@@ -342,6 +348,14 @@
     border: 1px solid rgba(220, 72, 72, 0.35);
     letter-spacing: 0.03em;
     cursor: help;
+    min-width: 22px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .fail-tag-single {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .estimate-tag {
     display: inline-block;
@@ -353,20 +367,6 @@
     color: #224d8f;
     background: rgba(71, 122, 199, 0.12);
     border: 1px solid rgba(71, 122, 199, 0.35);
-    letter-spacing: 0.03em;
-    vertical-align: middle;
-    cursor: help;
-  }
-  .fallback-tag {
-    display: inline-block;
-    margin-left: 6px;
-    font-size: 0.56rem;
-    line-height: 1;
-    padding: 2px 5px;
-    border-radius: 999px;
-    color: #8a5f1d;
-    background: rgba(204, 138, 46, 0.16);
-    border: 1px solid rgba(204, 138, 46, 0.45);
     letter-spacing: 0.03em;
     vertical-align: middle;
     cursor: help;
@@ -587,6 +587,7 @@
     }
     .forecast-header, .forecast-row { padding: 8px 10px; font-size: 0.68rem; }
     .forecast-row { font-size: 0.73rem; }
+    .forecast-header, .forecast-row { grid-template-columns: 44px 44px 48px 56px 120px 92px; }
     .cell-icon { font-size: 0.82rem; }
     .cell-sub { font-size: 0.56rem; }
     .check-col { font-size: 0.68rem; }
@@ -1730,23 +1731,27 @@ function render() {
         });
       }
     }
+    const uniqueTags = [...new Set(failedCriteria.map(item => item.tag))];
+    const koLabel = uniqueTags.length ? uniqueTags.join('+') : 'NA';
+    const koDetails = failedCriteria.map(item => item.title).join(' | ');
     const check = good
       ? '<span class="good-mark">✓</span>'
       : (failedCriteria.length
-        ? `<span class="fail-tags">${failedCriteria.map(item => `<span class="fail-tag" title="${item.title}">${item.tag}</span>`).join('')}</span>`
+        ? `<span class="fail-tag fail-tag-single" title="${koDetails}">${koLabel}</span>`
         : '');
     const estimatedBadge = h.estimated ? '<span class="estimate-tag" title="Valeur estimee a partir de la prevision journaliere">estime</span>' : '';
-    const fallbackBadge = usesRainFallback ? '<span class="fallback-tag" title="Probabilite pluie indisponible: decision derivee du cumul de precipitation (mm)">P~</span>' : '';
+    const fallbackBadge = '';
     const tempText = Number.isFinite(h.temp) ? `${Math.round(h.temp)}°C` : '--';
     const windText = Number.isFinite(h.wind) ? `${Math.round(h.wind)}km/h` : '--';
-    const rainTitle = `Prob. ${hasRainProb ? formatPercent(rainProb, 2) : '--'} · ${hasPrecipMm ? precipMm.toFixed(1) : '--'} mm/h`;
-    const rainSub = `${hasRainProb ? formatPercent(rainProb, 2) : '--'} · ${hasPrecipMm ? precipMm.toFixed(1) : '--'}mm`;
+    const rainProbText = hasRainProb ? formatPercent(rainProb, 2) : '--';
+    const rainMmText = hasPrecipMm ? `${precipMm.toFixed(1)} mm` : '--';
+    const rainTitle = `Prob. ${rainProbText} · ${hasPrecipMm ? precipMm.toFixed(1) : '--'} mm/h`;
     return `<div class="forecast-row ${cls}">
-      <span class="time-col">${formatTime(h.time)}${estimatedBadge}</span>
+      <span class="time-col">${formatTime(h.time)}${estimatedBadge}${fallbackBadge}</span>
       <span>${cloudBar(h.cloud)}</span>
       <span class="temp-col">${tempText}</span>
       <span class="wind-col">${windText}</span>
-      <div class="cell-stack rain-col" title="${rainTitle}"><span class="cell-icon">${rainEmoji(Number.isFinite(rainForDecision) ? rainForDecision : 100, hasPrecipMm ? precipMm : 0)}</span><span class="cell-sub">${rainSub}${fallbackBadge}</span></div>
+      <div class="cell-stack rain-col" title="${rainTitle}"><span class="cell-icon">${rainEmoji(Number.isFinite(rainForDecision) ? rainForDecision : 100, hasPrecipMm ? precipMm : 0)}</span><span class="cell-sub">${rainProbText}</span><span class="cell-sub">${rainMmText}</span></div>
       <span class="check-col">${check}</span>
     </div>`;
   }).join('') || `<div class="status" style="padding:24px">Aucune donnée disponible</div>`;
@@ -1914,7 +1919,7 @@ function renderMultiModel() {
       const precipMm = hasPrecipMm ? h.precip : null;
       const rainProb = hasRainProb ? h.rain : 100;
       const rainForDecision = Number.isFinite(rainDecision.value) ? rainDecision.value : rainProb;
-      const fallbackBadge = rainDecision.fallback ? ' <span class="fallback-tag" title="Probabilite pluie indisponible: decision derivee du cumul de precipitation (mm)">P~</span>' : '';
+      const fallbackBadge = '';
       const hasCloud = Number.isFinite(h.cloud);
       const hasTemp = Number.isFinite(h.temp);
       const hasWind = Number.isFinite(h.wind);
